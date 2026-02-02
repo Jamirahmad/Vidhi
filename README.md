@@ -85,3 +85,31 @@ Vidhi is a **multi-agent system**, where each agent has a clear responsibility:
 git clone https://github.com/yourusername/vidhi.git
 cd vidhi
 pip install -r requirements.txt
+
+### Usage
+1. Launch the central orchestrator:
+`python agents/orchestrator.py`
+2. Input case facts, legal issues, and jurisdiction.
+3. Workflow executes:
+- CaseFinder → retrieves relevant precedents
+- IssueSpotter → identifies legal issues
+- LimitationChecker → evaluates time-bar
+- ArgumentBuilder → generates arguments
+- DocComposer → drafts legal documents
+- ComplianceGuard → checks filings and formatting
+- AidConnector → suggests legal aid if needed
+4. Verify outputs manually before filing.
+
+### Contributing
+Contributions are welcome for improving workflows, adding legal domains, or enhancing retrieval and drafting modules.
+#### Important:
+- Do not generate legal opinions or fabricate case laws.
+- Maintain ethical boundaries and ensure human verification for all outputs.
+
+### License
+This repository is for **educational and research purposes** only. Users are responsible for verifying all legal outputs before filing or action.
+
+### Acknowledgements
+- Indian legal system workflows and research challenges
+- LangChain, CrewAI, FAISS, ChromaDB, OpenAI embeddings
+- Capstone project for Indian Institute of Technology Madras - Pravartak : Agentic AI and Applications
