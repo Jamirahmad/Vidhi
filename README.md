@@ -73,21 +73,6 @@ Vidhi is a **multi-agent system**, where each agent has a clear responsibility:
 
 ---
 
-## Getting Started
-
-### Prerequisites
-- Python 3.9+  
-- Jupyter Notebook / VS Code  
-- Libraries: `langchain`, `chromadb`, `FAISS`, `openai`, `streamlit`, `fastapi`, `requests`, `pandas`, `numpy`  
-
-### Installation
-```bash
-git clone https://github.com/yourusername/vidhi.git
-cd vidhi
-pip install -r requirements.txt
-
----
-
 ### Usage
 1. Launch the central orchestrator:
 `python agents/orchestrator.py`
@@ -121,3 +106,18 @@ This repository is for **educational and research purposes** only. Users are res
 - Indian legal system workflows and research challenges
 - LangChain, CrewAI, FAISS, ChromaDB, OpenAI embeddings
 - Capstone project for Indian Institute of Technology Madras - Pravartak : Agentic AI and Applications
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Python 3.9+  
+- Jupyter Notebook / VS Code  
+- Libraries: `langchain`, `chromadb`, `FAISS`, `openai`, `streamlit`, `fastapi`, `requests`, `pandas`, `numpy`  
+
+### Installation
+```bash
+git clone https://github.com/yourusername/vidhi.git
+cd vidhi
+pip install -r requirements.txt
