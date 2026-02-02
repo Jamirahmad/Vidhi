@@ -86,6 +86,8 @@ git clone https://github.com/yourusername/vidhi.git
 cd vidhi
 pip install -r requirements.txt
 
+---
+
 ### Usage
 1. Launch the central orchestrator:
 `python agents/orchestrator.py`
@@ -100,14 +102,20 @@ pip install -r requirements.txt
 - AidConnector → suggests legal aid if needed
 4. Verify outputs manually before filing.
 
+---
+
 ### Contributing
 Contributions are welcome for improving workflows, adding legal domains, or enhancing retrieval and drafting modules.
 #### Important:
 - Do not generate legal opinions or fabricate case laws.
 - Maintain ethical boundaries and ensure human verification for all outputs.
 
+---
+
 ### License
 This repository is for **educational and research purposes** only. Users are responsible for verifying all legal outputs before filing or action.
+
+---
 
 ### Acknowledgements
 - Indian legal system workflows and research challenges
