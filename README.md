@@ -1,49 +1,51 @@
 # Vidhi — Legal Case Research & Document Automation
 
-**Vidhi** is an assistive legal research and document automation platform designed to help lawyers, litigants, and legal researchers efficiently discover relevant case laws, statutes, and judicial precedents, and generate draft legal documents grounded in verifiable citations.
+**Vidhi** is an assistive legal research and document automation platform for the Indian legal ecosystem. It helps lawyers, litigants, and legal researchers efficiently discover relevant case laws, statutes, and judicial precedents, and generate draft legal documents with verifiable citations and human verification.
 
 ---
 
 ## Problem Statement
 
-The Indian legal system faces a backlog of over 4.5 crore cases, causing delays and inefficiencies in research and documentation. Junior lawyers and litigants often spend 40–60 hours manually reviewing case laws, precedents, and legal statutes. Existing solutions are costly, and manual research is error-prone, incomplete, and time-consuming. Drafting petitions, legal notices, and responses often relies on outdated templates and lacks comprehensive legal references.
+India’s legal system has a backlog of over 4.5 crore cases, causing delays and inefficiencies. Junior lawyers and litigants spend 40–60 hours manually reviewing case laws, precedents, and statutes. Drafting petitions, legal notices, and responses often relies on outdated templates and incomplete research, making the process slow, error-prone, and costly.
 
 ---
 
 ## Solution Overview
 
-Vidhi aims to **assist legal professionals and litigants** by automating the research and drafting workflow, without replacing human judgment. It provides:
+Vidhi assists legal professionals by automating research and drafting workflows **without replacing human judgment**. Key capabilities include:
 
-- Autonomous retrieval of relevant case laws and statutes across Supreme Court, High Courts, and tribunals.
+- Retrieval of relevant case laws and statutes across Supreme Court, High Courts, and tribunals.
 - Identification of legal issues, supporting and contradictory precedents, and limitation analysis.
-- Drafting of legal documents such as bail applications, civil suits, legal notices, and affidavits.
+- Drafting legal documents such as bail applications, civil suits, notices, and affidavits.
 - Court-specific compliance checks and citation formatting.
-- Multilingual support for English, Hindi, and regional languages.
-- Human-in-the-loop verification to ensure ethical, safe, and accurate outputs.
+- Multilingual support (English, Hindi, regional languages).
+- Human-in-the-loop verification for ethical and accurate outputs.
 
 ---
 
-## Technical Solution / Architecture
+## Technical Architecture
 
-Vidhi is built as a **multi-agent system**, where each agent has a distinct responsibility:
+Vidhi is a **multi-agent system**, where each agent has a clear responsibility:
 
-| Agent | Function |
-|-------|---------|
-| **LRA (Legal Research Agent)** | Orchestrates tasks across all sub-agents and handles user interaction |
-| **CLSA (Case Law Search Agent)** | Retrieves relevant case laws and judicial precedents |
-| **LII (Legal Issue Identifier)** | Extracts legal issues, IPC/CrPC/CPC sections, and key facts from input |
-| **LAA (Limitation Analysis Agent)** | Determines limitation applicability based on case facts |
-| **LAB (Legal Argument Builder)** | Constructs supporting and counter-arguments using precedents |
-| **DGA (Document Generation Agent)** | Drafts legal documents with court-specific formatting |
-| **CCA (Compliance Check Agent)** | Validates filings, annexures, affidavits, and court fees |
-| **LAF (Legal Aid Finder)** | Suggests legal aid or pro-bono options if needed |
+| Agent Name | Function / Offering |
+|------------|-------------------|
+| **LegalOrchestrator** | Central workflow manager; coordinates all agents and user interactions |
+| **CaseFinder** | Searches relevant case laws and judicial precedents across courts |
+| **IssueSpotter** | Identifies legal issues, IPC/CrPC/CPC sections, and key facts |
+| **LimitationChecker** | Checks limitation periods and time-bar applicability (e.g., Section 18) |
+| **ArgumentBuilder** | Builds supporting and counter-arguments based on precedents |
+| **DocComposer** | Drafts petitions, notices, affidavits, and other legal documents |
+| **ComplianceGuard** | Validates filings, annexures, court formatting, and fees |
+| **AidConnector** | Suggests legal aid or pro-bono options for users when applicable |
 
-**Technical Stack:**
+---
 
-- **Python & Jupyter Notebooks** – Core language and development environment  
-- **LangChain / CrewAI / AutoGen** – Agent orchestration and workflow management  
-- **ChromaDB / FAISS** – Vector-based retrieval of legal documents  
-- **OpenAI embeddings & tokenization tools** – Text embeddings and semantic similarity  
+### Technology Stack
+
+- **Python & Jupyter Notebooks** – Core development environment  
+- **LangChain / CrewAI / AutoGen** – Agent orchestration  
+- **ChromaDB / FAISS** – Vector-based case retrieval  
+- **OpenAI embeddings & tokenization tools** – Semantic similarity  
 - **Streamlit / FastAPI / HuggingFace Spaces** – Deployment and UI  
 - **LangSmith / PromptLayer** – Logging, tracing, and evaluation  
 - **Translation libraries** – Multilingual document handling  
@@ -52,22 +54,22 @@ Vidhi is built as a **multi-agent system**, where each agent has a distinct resp
 
 ## Key Offerings
 
-1. **Efficient Legal Research** – Quickly find relevant precedents and statutes.  
-2. **Document Drafting** – Generate petitions, notices, and affidavits with proper citations.  
-3. **Compliance & Verification** – Court-specific formatting, annexures, and human-in-the-loop checks.  
-4. **Multi-lingual Support** – Supports English, Hindi, and regional languages.  
-5. **Scenario Simulation** – Test workflows for bail, civil disputes, or other case types.  
-6. **Ethical Boundaries** – Prevents generation of legal opinions or fabricated case laws.
+1. **Efficient Legal Research** – Quickly find precedents and statutes  
+2. **Document Drafting** – Generate petitions, notices, and affidavits  
+3. **Compliance & Verification** – Court-specific formatting, annexures, and human review  
+4. **Multi-lingual Support** – English, Hindi, and regional languages  
+5. **Scenario Simulation** – Test workflows for bail, civil disputes, etc.  
+6. **Ethical Boundaries** – No legal opinions or fabricated cases  
 
 ---
 
 ## Limitations / Non-Goals
 
-- Vidhi **does not provide legal opinions or advice**.  
-- Cannot guarantee case outcomes or success in court.  
-- Does not replace lawyers or human judgment in filing or court representation.  
-- Novel legal questions without precedents require human analysis.  
-- Filing of documents and legal representation remains the user’s responsibility.
+- Vidhi **does not provide legal advice**.  
+- Cannot guarantee legal outcomes.  
+- Cannot replace lawyers or court representation.  
+- Novel legal questions without precedents require human review.  
+- Users are responsible for filings and legal actions.  
 
 ---
 
@@ -76,11 +78,10 @@ Vidhi is built as a **multi-agent system**, where each agent has a distinct resp
 ### Prerequisites
 - Python 3.9+  
 - Jupyter Notebook / VS Code  
-- Required libraries: `langchain`, `chromadb`, `FAISS`, `openai`, `streamlit`, `fastapi`, `requests`, `pandas`, `numpy`  
+- Libraries: `langchain`, `chromadb`, `FAISS`, `openai`, `streamlit`, `fastapi`, `requests`, `pandas`, `numpy`  
 
 ### Installation
 ```bash
 git clone https://github.com/yourusername/vidhi.git
 cd vidhi
 pip install -r requirements.txt
-
