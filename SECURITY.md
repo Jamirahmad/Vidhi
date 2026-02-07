@@ -24,7 +24,7 @@ If you discover a security vulnerability in Vidhi, please report it responsibly.
 ### Please DO:
 Send a private report to the project maintainers.
 
-📩 Contact Email: **[ADD YOUR EMAIL HERE]**
+📩 Contact Email: **jamirahmadmulla@gmail.com**
 
 Include the following details in your report:
 
