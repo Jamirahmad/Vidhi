@@ -1,1 +1,148 @@
+flowchart TB
 
+  %% ==========================================================
+  %% Vidhi - Multi Agent Architecture
+  %% File: docs/architecture/multi_agent_architecture.mmd
+  %% ==========================================================
+
+  subgraph U[User Layer]
+    USER[Lawyer / Litigant / Student]
+    UI[Streamlit UI]
+    API[FastAPI REST API]
+  end
+
+  subgraph ORCH[Orchestration Layer]
+    LRA[LegalOrchestrator<br/>Central Workflow Manager]
+    ROUTER[Task Router<br/>Intent + Flow Control]
+    REG[Agent Registry<br/>Agent Discovery]
+    PM[Prompt Manager<br/>Prompt Templates]
+    MEM[Session Memory<br/>Short-term Context]
+    SAFE[Safety Guardrails<br/>Policy Enforcement]
+    FORMAT[Response Formatter<br/>Final Output Packager]
+  end
+
+  subgraph AG[Agent Layer]
+    CLSA[CaseFinder<br/>Case Law Search Agent]
+    LII[IssueSpotter<br/>Issue Identification Agent]
+    LAA[LimitationChecker<br/>Limitation Analysis Agent]
+    LAB[ArgumentBuilder<br/>Argument Construction Agent]
+    DGA[DocComposer<br/>Document Drafting Agent]
+    CCA[ComplianceGuard<br/>Filing Compliance Agent]
+    LAF[AidConnector<br/>Legal Aid Finder Agent]
+  end
+
+  subgraph KB[Knowledge & Retrieval Layer]
+    RETR[Retriever Engine]
+    VS[(Vector Store<br/>FAISS / ChromaDB)]
+    RAW[(Raw + Processed Data<br/>data/)]
+    CITV[Citation Validator]
+  end
+
+  subgraph EXT[External Services]
+    LLM[LLM Provider<br/>OpenAI / HF]
+    TRANS[Translation Service<br/>English/Hindi/Regional]
+    OCR[OCR Engine<br/>Tesseract / OCR API]
+  end
+
+  subgraph OUT[Outputs Layer]
+    REPORT[Research Report<br/>Citations + Summaries]
+    DOCS[Generated Draft Documents<br/>Petitions / Notices]
+    COMP[Compliance Report<br/>Missing Annexures/Fees]
+    LOGS[(Logs + Traces<br/>logs/)]
+  end
+
+  %% ==========================================================
+  %% User Flow
+  %% ==========================================================
+
+  USER --> UI
+  USER --> API
+
+  UI --> LRA
+  API --> LRA
+
+  %% ==========================================================
+  %% Orchestrator Internal Components
+  %% ==========================================================
+
+  LRA --> ROUTER
+  LRA --> REG
+  LRA --> PM
+  LRA --> MEM
+  LRA --> SAFE
+  LRA --> FORMAT
+
+  %% ==========================================================
+  %% Orchestrator to Agents
+  %% ==========================================================
+
+  ROUTER --> CLSA
+  ROUTER --> LII
+  ROUTER --> LAA
+  ROUTER --> LAB
+  ROUTER --> DGA
+  ROUTER --> CCA
+  ROUTER --> LAF
+
+  %% ==========================================================
+  %% Agent Dependencies (Retrieval + Tools)
+  %% ==========================================================
+
+  CLSA --> RETR
+  RETR --> VS
+  VS --> RAW
+
+  CLSA --> CITV
+  DGA --> CITV
+  LAB --> CITV
+
+  LII --> LLM
+  LAA --> LLM
+  LAB --> LLM
+  DGA --> LLM
+  CCA --> LLM
+  LAF --> LLM
+
+  DGA --> TRANS
+  CLSA --> OCR
+
+  SAFE --> LLM
+
+  %% ==========================================================
+  %% Outputs
+  %% ==========================================================
+
+  CLSA --> REPORT
+  LII --> REPORT
+  LAA --> REPORT
+  LAB --> REPORT
+
+  DGA --> DOCS
+  CCA --> COMP
+  LAF --> REPORT
+
+  FORMAT --> REPORT
+  FORMAT --> DOCS
+  FORMAT --> COMP
+
+  REPORT --> LOGS
+  DOCS --> LOGS
+  COMP --> LOGS
+
+  %% ==========================================================
+  %% Styling
+  %% ==========================================================
+
+  classDef user fill:#fef3c7,stroke:#92400e,stroke-width:1px;
+  classDef orch fill:#dbeafe,stroke:#1e40af,stroke-width:1px;
+  classDef agent fill:#f3e8ff,stroke:#6b21a8,stroke-width:1px;
+  classDef retrieval fill:#ecfccb,stroke:#3f6212,stroke-width:1px;
+  classDef external fill:#e0f2fe,stroke:#075985,stroke-width:1px;
+  classDef output fill:#ffe4e6,stroke:#9f1239,stroke-width:1px;
+
+  class USER,UI,API user;
+  class LRA,ROUTER,REG,PM,MEM,SAFE,FORMAT orch;
+  class CLSA,LII,LAA,LAB,DGA,CCA,LAF agent;
+  class RETR,VS,RAW,CITV retrieval;
+  class LLM,TRANS,OCR external;
+  class REPORT,DOCS,COMP,LOGS output;
