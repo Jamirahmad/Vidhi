@@ -1,11 +1,3 @@
-# Vidhi — Legal Data Sources & Ingestion Strategy (DATA_SOURCES.md)
-
-This document defines the **primary legal data sources** used by Vidhi and outlines the recommended **ingestion strategy** for building a high-quality legal knowledge base for retrieval and citation-based drafting.
-
-Vidhi is designed to support **Indian legal workflows** across Supreme Court, High Courts, Tribunals, and select public repositories.
-
----
-
 ## 1. Objective
 
 Vidhi requires access to reliable legal documents to support:
