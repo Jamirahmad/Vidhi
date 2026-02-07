@@ -1,81 +1,97 @@
-flowchart TB
+flowchart LR
 
   %% ==========================================================
-  %% Vidhi - Multi Agent Architecture
-  %% File: docs/architecture/multi_agent_architecture.mmd
+  %% MULTI AGENT ARCHITECTURE (Clean + High Detail)
   %% ==========================================================
 
-  subgraph U[User Layer]
-    USER[Lawyer / Litigant / Student]
-    UI[Streamlit UI]
-    API[FastAPI REST API]
+  %% ---------------------------
+  %% User / Interface Layer
+  %% ---------------------------
+  subgraph UI["User & Interface Layer"]
+    U1[👤 User<br/>Lawyer / Citizen / Student]
+    WEB[🌐 Streamlit UI]
+    API[⚡ FastAPI Gateway]
   end
 
-  subgraph ORCH[Orchestration Layer]
-    LRA[LegalOrchestrator<br/>Central Workflow Manager]
-    ROUTER[Task Router<br/>Intent + Flow Control]
-    REG[Agent Registry<br/>Agent Discovery]
-    PM[Prompt Manager<br/>Prompt Templates]
-    MEM[Session Memory<br/>Short-term Context]
-    SAFE[Safety Guardrails<br/>Policy Enforcement]
-    FORMAT[Response Formatter<br/>Final Output Packager]
+  %% ---------------------------
+  %% Orchestration Layer
+  %% ---------------------------
+  subgraph ORCH["Orchestration & Control Plane"]
+    LRA[🧠 LRA<br/>Legal Reasoning Orchestrator]
+    ROUTER[🔀 Task Router<br/>Intent + Agent Selection]
+    STATE[🗂️ Session State<br/>Conversation Memory]
+    POLICY[🛡️ Safety + Policy Guard<br/>Hallucination & Abuse Filter]
+    AUDIT[📜 Audit Logger<br/>Trace + Evidence Capture]
   end
 
-  subgraph AG[Agent Layer]
-    CLSA[CaseFinder<br/>Case Law Search Agent]
-    LII[IssueSpotter<br/>Issue Identification Agent]
-    LAA[LimitationChecker<br/>Limitation Analysis Agent]
-    LAB[ArgumentBuilder<br/>Argument Construction Agent]
-    DGA[DocComposer<br/>Document Drafting Agent]
-    CCA[ComplianceGuard<br/>Filing Compliance Agent]
-    LAF[AidConnector<br/>Legal Aid Finder Agent]
+  %% ---------------------------
+  %% Agent Layer
+  %% ---------------------------
+  subgraph AGENTS["Agent Execution Layer"]
+    CLSA[🔍 CLSA<br/>Case Law Search Agent]
+    LII[🧩 LII<br/>Legal Issue Identifier]
+    LAA[⏳ LAA<br/>Limitation Analysis Agent]
+    LAB[⚔️ LAB<br/>Legal Argument Builder]
+    DGA[📝 DGA<br/>Draft Generator Agent]
+    CCA[✅ CCA<br/>Compliance Check Agent]
+    LAF[🤝 LAF<br/>Legal Aid Finder Agent]
   end
 
-  subgraph KB[Knowledge & Retrieval Layer]
-    RETR[Retriever Engine]
-    VS[(Vector Store<br/>FAISS / ChromaDB)]
-    RAW[(Raw + Processed Data<br/>data/)]
-    CITV[Citation Validator]
+  %% ---------------------------
+  %% Retrieval Layer
+  %% ---------------------------
+  subgraph RET["Retrieval & Knowledge Layer"]
+    RETR[📌 Retrieval Engine<br/>Hybrid Search]
+    VDB[(📚 Vector Store<br/>Chroma / FAISS)]
+    META[(🗃️ Metadata Index<br/>SQLite / JSON)]
+    DOCS[(📂 Document Store<br/>PDF / HTML / Text)]
+    CIT[🔗 Citation Validator<br/>Source Proof]
   end
 
-  subgraph EXT[External Services]
-    LLM[LLM Provider<br/>OpenAI / HF]
-    TRANS[Translation Service<br/>English/Hindi/Regional]
-    OCR[OCR Engine<br/>Tesseract / OCR API]
+  %% ---------------------------
+  %% Data Ingestion Pipeline
+  %% ---------------------------
+  subgraph ING["Data Ingestion Pipeline"]
+    SRC[🌍 Sources<br/>SC / HC / Tribunals]
+    SCRAPE[🕸️ Scraper + Downloader]
+    PARSE[📄 Parser<br/>HTML / PDF / OCR]
+    CLEAN[🧼 Cleaner + Normalizer]
+    CHUNK[✂️ Chunking Engine]
+    EMB[🧠 Embedding Generator]
+    LOAD[📥 Loader to Vector Store]
   end
 
-  subgraph OUT[Outputs Layer]
-    REPORT[Research Report<br/>Citations + Summaries]
-    DOCS[Generated Draft Documents<br/>Petitions / Notices]
-    COMP[Compliance Report<br/>Missing Annexures/Fees]
-    LOGS[(Logs + Traces<br/>logs/)]
+  %% ---------------------------
+  %% LLM / External Services
+  %% ---------------------------
+  subgraph EXT["External Services"]
+    LLM[🤖 LLM Provider<br/>OpenAI / HuggingFace]
+    OCR[🔠 OCR Engine<br/>Tesseract]
+    TRANS[🌐 Translation Service]
+  end
+
+  %% ---------------------------
+  %% Output Layer
+  %% ---------------------------
+  subgraph OUT["Output & Human Handoff"]
+    RESP[📦 Response Packager<br/>Final Answer + Citations]
+    REPORT[📑 Research Output]
+    DRAFT[📃 Draft Petition/Notice]
+    HANDOFF[🙋 Human Review Required<br/>Critical Legal Decisions]
   end
 
   %% ==========================================================
-  %% User Flow
+  %% FLOW: User → Orchestrator
   %% ==========================================================
-
-  USER --> UI
-  USER --> API
-
-  UI --> LRA
-  API --> LRA
-
-  %% ==========================================================
-  %% Orchestrator Internal Components
-  %% ==========================================================
-
+  U1 --> WEB --> API --> LRA
   LRA --> ROUTER
-  LRA --> REG
-  LRA --> PM
-  LRA --> MEM
-  LRA --> SAFE
-  LRA --> FORMAT
+  LRA --> STATE
+  LRA --> POLICY
+  LRA --> AUDIT
 
   %% ==========================================================
-  %% Orchestrator to Agents
+  %% FLOW: Router → Agents
   %% ==========================================================
-
   ROUTER --> CLSA
   ROUTER --> LII
   ROUTER --> LAA
@@ -85,17 +101,9 @@ flowchart TB
   ROUTER --> LAF
 
   %% ==========================================================
-  %% Agent Dependencies (Retrieval + Tools)
+  %% FLOW: Agents → Retrieval + LLM
   %% ==========================================================
-
   CLSA --> RETR
-  RETR --> VS
-  VS --> RAW
-
-  CLSA --> CITV
-  DGA --> CITV
-  LAB --> CITV
-
   LII --> LLM
   LAA --> LLM
   LAB --> LLM
@@ -103,46 +111,33 @@ flowchart TB
   CCA --> LLM
   LAF --> LLM
 
+  RETR --> VDB
+  RETR --> META
+  VDB --> DOCS
+
+  CLSA --> CIT
+  LAB --> CIT
+  DGA --> CIT
+
+  %% ==========================================================
+  %% FLOW: Ingestion → Vector Store
+  %% ==========================================================
+  SRC --> SCRAPE --> PARSE --> CLEAN --> CHUNK --> EMB --> LOAD --> VDB
+  PARSE --> OCR
   DGA --> TRANS
-  CLSA --> OCR
-
-  SAFE --> LLM
 
   %% ==========================================================
-  %% Outputs
+  %% FLOW: Final Outputs
   %% ==========================================================
+  CLSA --> RESP
+  LII --> RESP
+  LAA --> RESP
+  LAB --> RESP
+  DGA --> RESP
+  CCA --> RESP
+  LAF --> RESP
 
-  CLSA --> REPORT
-  LII --> REPORT
-  LAA --> REPORT
-  LAB --> REPORT
-
-  DGA --> DOCS
-  CCA --> COMP
-  LAF --> REPORT
-
-  FORMAT --> REPORT
-  FORMAT --> DOCS
-  FORMAT --> COMP
-
-  REPORT --> LOGS
-  DOCS --> LOGS
-  COMP --> LOGS
-
-  %% ==========================================================
-  %% Styling
-  %% ==========================================================
-
-  classDef user fill:#fef3c7,stroke:#92400e,stroke-width:1px;
-  classDef orch fill:#dbeafe,stroke:#1e40af,stroke-width:1px;
-  classDef agent fill:#f3e8ff,stroke:#6b21a8,stroke-width:1px;
-  classDef retrieval fill:#ecfccb,stroke:#3f6212,stroke-width:1px;
-  classDef external fill:#e0f2fe,stroke:#075985,stroke-width:1px;
-  classDef output fill:#ffe4e6,stroke:#9f1239,stroke-width:1px;
-
-  class USER,UI,API user;
-  class LRA,ROUTER,REG,PM,MEM,SAFE,FORMAT orch;
-  class CLSA,LII,LAA,LAB,DGA,CCA,LAF agent;
-  class RETR,VS,RAW,CITV retrieval;
-  class LLM,TRANS,OCR external;
-  class REPORT,DOCS,COMP,LOGS output;
+  RESP --> REPORT
+  RESP --> DRAFT
+  POLICY --> HANDOFF
+  RESP --> HANDOFF
