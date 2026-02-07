@@ -1,103 +1,82 @@
 flowchart TB
 
-%% ==========================================================
-%% VIDHI - MULTI AGENT ARCHITECTURE (Enterprise View)
-%% ==========================================================
-
-subgraph L0["User Interaction Layer"]
-  U[👤 User]
-  UI[🌐 Streamlit UI / Web UI]
-  API[⚡ FastAPI Gateway]
+subgraph L0[User Interaction Layer]
+  U[User]
+  UI[Streamlit UI or Web UI]
+  API[FastAPI Gateway]
 end
 
-subgraph L1["Control & Orchestration Layer"]
-  LRA[🧠 LRA - Legal Reasoning Orchestrator]
-  ROUTER[🔀 Task Router & Planner]
-  STATE[🗂️ Session State Manager]
-  POLICY[🛡️ Safety + Policy Guard]
-  AUDIT[📜 Audit & Trace Logger]
+subgraph L1[Control and Orchestration Layer]
+  LRA[Legal Reasoning Orchestrator]
+  ROUTER[Task Router and Planner]
+  STATE[Session State Manager]
+  POLICY[Safety and Policy Guard]
+  AUDIT[Audit and Trace Logger]
 end
 
-subgraph L2["Multi-Agent Execution Layer"]
-  CLSA[🔍 CLSA - CaseFinder<br/>(Precedent Retrieval)]
-  LII[🧩 LII - IssueSpotter<br/>(Issue + Section Extraction)]
-  LAA[⏳ LAA - LimitationChecker<br/>(Time-bar / Limitation Rules)]
-  LAB[⚔️ LAB - ArgumentBuilder<br/>(Arguments + Counter Arguments)]
-  DGA[📝 DGA - DocComposer<br/>(Draft Petition / Notice)]
-  CCA[✅ CCA - ComplianceGuard<br/>(Formatting + Filing Checks)]
-  LAF[🤝 LAF - AidConnector<br/>(Legal Aid Suggestions)]
+subgraph L2[Multi Agent Execution Layer]
+  CLSA[CLSA CaseFinder - Precedent Retrieval]
+  LII[LII IssueSpotter - Issues and Sections]
+  LAA[LAA LimitationChecker - Time Bar Validation]
+  LAB[LAB ArgumentBuilder - Supporting and Counter Arguments]
+  DGA[DGA DocComposer - Draft Generator]
+  CCA[CCA ComplianceGuard - Filing and Format Checks]
+  LAF[LAF AidConnector - Legal Aid Suggestions]
 end
 
-subgraph L3["Knowledge & Retrieval Layer"]
-  RETR[📌 Hybrid Retrieval Engine<br/>(BM25 + Vector Search)]
-  VDB[(📚 Vector Store<br/>Chroma / FAISS)]
-  META[(🗃️ Metadata Index<br/>SQLite / JSON)]
-  DOCS[(📂 Document Store<br/>PDF / HTML / Text)]
+subgraph L3[Knowledge and Retrieval Layer]
+  RETR[Hybrid Retrieval Engine]
+  VDB[(Vector Store - Chroma or FAISS)]
+  META[(Metadata Index - SQLite or JSON)]
+  DOCS[(Document Store - PDF HTML Text)]
 end
 
-subgraph L4["Model & Tool Layer"]
-  LLM[🤖 LLM Provider]
-  EMB[🧠 Embedding Model]
-  OCR[🔠 OCR Engine]
+subgraph L4[Model and Tool Layer]
+  LLM[LLM Provider]
+  EMB[Embedding Model]
+  OCR[OCR Engine]
 end
 
-subgraph L5["Outputs + Human Handoff Layer"]
-  PACK[📦 Response Packager<br/>(Answer + Citations + Drafts)]
-  REPORT[📑 Research Summary Output]
-  DRAFT[📃 Draft Document Output]
-  HANDOFF[🙋 Human Review & Lawyer Validation]
+subgraph L5[Outputs and Human Handoff Layer]
+  PACK[Response Packager - Citations and Drafts]
+  REPORT[Research Summary Output]
+  DRAFT[Draft Document Output]
+  HANDOFF[Human Review and Lawyer Validation]
 end
 
-subgraph L6["Data Ingestion Pipeline (Offline/Batch)"]
-  SRC[🌍 Data Sources<br/>SC / HC / Tribunals]
-  ING[🕸️ Scraper + Downloader]
-  PARSE[📄 Parser + OCR]
-  CLEAN[🧼 Cleaner + Normalizer]
-  CHUNK[✂️ Chunker]
-  INDEX[📥 Index Builder]
+subgraph L6[Data Ingestion Pipeline - Offline]
+  SRC[Legal Sources - SC HC Tribunals]
+  ING[Downloader and Scraper]
+  PARSE[Parser and OCR Extractor]
+  CLEAN[Cleaner and Normalizer]
+  CHUNK[Chunker]
+  INDEX[Index Builder]
 end
 
 
-%% ==========================================================
-%% MAIN FLOW (Clean Single Pipeline)
-%% ==========================================================
 U --> UI --> API --> LRA
+
 LRA --> ROUTER --> CLSA
 CLSA --> RETR --> VDB
 VDB --> PACK
 
-%% ==========================================================
-%% AGENT PIPELINE (Ordered Workflow)
-%% ==========================================================
 PACK --> LII --> LAA --> LAB --> DGA --> CCA --> LAF --> PACK
 
-%% ==========================================================
-%% GOVERNANCE & STATE (No Entanglement)
-%% ==========================================================
 LRA --> STATE
 LRA --> POLICY
 LRA --> AUDIT
 
-%% ==========================================================
-%% MODEL DEPENDENCIES (Minimal Arrows)
-%% ==========================================================
 RETR --> EMB
-DGA --> LLM
-LAB --> LLM
 LII --> LLM
 LAA --> LLM
+LAB --> LLM
+DGA --> LLM
 CCA --> LLM
 
-%% ==========================================================
-%% FINAL OUTPUTS
-%% ==========================================================
 PACK --> REPORT
 PACK --> DRAFT
 PACK --> HANDOFF
 
-%% ==========================================================
-%% INGESTION FLOW (Separate Clean Track)
-%% ==========================================================
 SRC --> ING --> PARSE --> CLEAN --> CHUNK --> INDEX --> VDB
 PARSE --> OCR
 INDEX --> META
