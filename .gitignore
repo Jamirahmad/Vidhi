@@ -85,8 +85,6 @@ data/user_uploads/
 # Vector Stores (Chroma / FAISS)
 # ==========================================================
 vectorstore/
-chroma_db/
-faiss_index/
 
 # ==========================================================
 # Model / Cache files
