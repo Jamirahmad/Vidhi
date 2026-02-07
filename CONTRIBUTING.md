@@ -98,3 +98,111 @@ Agents must return:
 - `confidence_score`
 - `warnings` (if any)
 - `handoff_required` (true/false)
+
+---
+
+## 🧪 Testing Guidelines
+Before submitting a PR:
+### Run Unit Tests
+```bash
+pytest
+```
+### Recommended Additions
+- Add test cases for every new agent
+- Add test cases for retrieval pipeline changes
+- Validate JSON output schema in tests
+
+---
+
+## 📝 Documentation Standards
+If your contribution changes functionality:
+- Update `README.md`
+- Update `CHANGELOG.md`
+- Add/Update diagrams under `docs/diagrams/`
+- Add sample outputs in `docs/examples/`
+
+## 🔐 Ethics & Responsible Contribution
+Vidhi supports legal workflows but must remain ethical and responsible.
+
+Contributors must ensure:
+- No features provide misleading legal advice
+- No fabricated citations or false judgments are generated
+- The system encourages human verification
+- Data ingestion respects licensing and terms of use
+
+---
+
+## 🛠 Branching Strategy
+Recommended workflow:
+
+- `main` → stable branch
+- `dev` → active development
+- `feature/<feature-name>` → feature branches
+- `bugfix/<bug-name>` → bug fix branches
+Example:
+```bash
+git checkout -b feature/new-agent-laf
+```
+
+---
+
+## ✅ Pull Request (PR) Process
+### Step-by-Step
+1. Fork the repo
+2. Create a feature branch
+3. Commit changes
+4. Push to your fork
+5. Open a Pull Request
+
+### PR Checklist
+Your PR should include:
+- [ ] Clear description of what was added/changed
+- [ ] No breaking changes unless discussed
+- [ ] Updated documentation (if needed)
+- [ ] Updated tests (if needed)
+- [ ] Updated CHANGELOG.md
+- [ ] Outputs validated (JSON structure correct)
+
+---
+
+## ✍️ Commit Message Guidelines
+Use simple and meaningful commit messages:
+
+Examples:
+- `feat: add limitation analyzer agent (LAA)`
+- `fix: improve citation extraction for CLSA`
+- `docs: update deployment diagram`
+- `test: add retrieval precision tests`
+
+---
+
+## 🐛 Reporting Bugs
+Please open a GitHub Issue with:
+- Expected behavior
+- Actual behavior
+- Steps to reproduce
+- Logs / error traces
+- Screenshots (if applicable)
+
+---
+
+## 💡 Suggesting Enhancements
+Enhancement proposals are welcome.
+
+For new agents, please include:
+- Agent purpose
+- Inputs/outputs
+- Example use case
+- Expected benefit
+- Potential risks (hallucination, compliance)
+
+---
+
+## 📜 License
+By contributing, you agree that your contributions will be licensed under the same license as the project.
+
+---
+
+## 🙏 Acknowledgements
+Thank you for helping improve Vidhi.
+Your contributions make the system more reliable, ethical, and impactful for the legal ecosystem.
