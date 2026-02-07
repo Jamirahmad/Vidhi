@@ -1,17 +1,118 @@
-flowchart TD
+flowchart TB
 
-  A[Legal Data Sources] --> B[Fetchers / Connectors]
-  B --> C[Raw Storage: data/raw/]
-  C --> D[Parsers: PDF / HTML / OCR]
-  D --> E[Cleaners: Text + Citation Cleaning]
-  E --> F[Metadata Extractor: Court, Date, Case No, Sections]
-  F --> G[Chunking Engine: chunking_rules.py]
-  G --> H[Processed Storage: data/processed/ and data/chunks/]
-  H --> I[Embedding Provider: OpenAI or Local]
-  I --> J[Vector Store Builder]
-  J --> K[(FAISS Index)]
-  J --> L[(ChromaDB)]
-  K --> M[Retriever Ready]
-  L --> M[Retriever Ready]
-  M --> N[CaseFinder Agent Uses Index]
-  N --> O[Outputs: Search Results + Citations]
+  %% ==========================================================
+  %% Vidhi - Data Ingestion & Vector Store Build Pipeline
+  %% File: docs/architecture/data_ingestion_pipeline.mmd
+  %% ==========================================================
+
+  subgraph S1[1. Data Sources]
+    SC[Supreme Court Judgments]
+    HC[High Court Judgments]
+    TR[Tribunal / Quasi-Judicial Orders]
+    UP[User Uploaded Documents]
+  end
+
+  subgraph S2[2. Ingestion Layer]
+    F1[SC Fetcher]
+    F2[HC Fetcher]
+    F3[Tribunal Fetcher]
+    F4[Upload Handler]
+  end
+
+  subgraph S3[3. Raw Storage]
+    RAW[(data/raw/)]
+  end
+
+  subgraph S4[4. Parsing & Normalization]
+    P1[PDF Parser]
+    P2[HTML Parser]
+    P3[OCR Parser]
+    CLN[Cleaner: remove noise + normalize text]
+    CIT[Cleaner: citation formatting cleanup]
+    LANG[Language Detector]
+  end
+
+  subgraph S5[5. Metadata Enrichment]
+    META[Metadata Extractor]
+    SCHEMA[(Metadata Schema)]
+  end
+
+  subgraph S6[6. Chunking Layer]
+    RULES[Chunking Rules]
+    CHUNK[Chunk Generator]
+    CHSTORE[(data/chunks/)]
+  end
+
+  subgraph S7[7. Embeddings & Indexing]
+    EMB[Embedding Provider]
+    IDX[Vector Store Builder]
+    FAISS[(FAISS Index)]
+    CHROMA[(ChromaDB)]
+  end
+
+  subgraph S8[8. Retrieval Runtime]
+    RETR[Retriever Service]
+    CASEF[CaseFinder Agent]
+    OUT[Ranked Case Laws + Citations]
+  end
+
+  %% ==========================================================
+  %% Flow Connections
+  %% ==========================================================
+
+  SC --> F1
+  HC --> F2
+  TR --> F3
+  UP --> F4
+
+  F1 --> RAW
+  F2 --> RAW
+  F3 --> RAW
+  F4 --> RAW
+
+  RAW --> P1
+  RAW --> P2
+  RAW --> P3
+
+  P1 --> CLN
+  P2 --> CLN
+  P3 --> CLN
+
+  CLN --> CIT
+  CIT --> LANG
+  LANG --> META
+
+  META --> SCHEMA
+  META --> CHUNK
+  RULES --> CHUNK
+
+  CHUNK --> CHSTORE
+  CHSTORE --> EMB
+
+  EMB --> IDX
+  IDX --> FAISS
+  IDX --> CHROMA
+
+  FAISS --> RETR
+  CHROMA --> RETR
+
+  RETR --> CASEF
+  CASEF --> OUT
+
+  %% ==========================================================
+  %% Styling
+  %% ==========================================================
+
+  classDef source fill:#fef3c7,stroke:#92400e,stroke-width:1px;
+  classDef ingest fill:#dbeafe,stroke:#1e40af,stroke-width:1px;
+  classDef storage fill:#ecfccb,stroke:#3f6212,stroke-width:1px;
+  classDef process fill:#f3e8ff,stroke:#6b21a8,stroke-width:1px;
+  classDef vector fill:#e0f2fe,stroke:#075985,stroke-width:1px;
+  classDef runtime fill:#ffe4e6,stroke:#9f1239,stroke-width:1px;
+
+  class SC,HC,TR,UP source;
+  class F1,F2,F3,F4 ingest;
+  class RAW,CHSTORE,SCHEMA storage;
+  class P1,P2,P3,CLN,CIT,LANG,META,RULES,CHUNK process;
+  class EMB,IDX,FAISS,CHROMA vector;
+  class RETR,CASEF,OUT runtime;
