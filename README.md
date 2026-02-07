@@ -202,7 +202,7 @@ See [LICENSE](https://github.com/Jamirahmad/Vidhi/blob/main/LICENSE) for details
 - LangChain, CrewAI, AutoGen
 - FAISS, ChromaDB
 - OpenAI Embeddings and tokenization tools
-- Capstone project for **IIT Madras - Pravartak** Agentic AI and Applications Program
+- Capstone project for **IIT Madras - Pravartak** _Agentic AI and Applications Program_
 
 ---
 
