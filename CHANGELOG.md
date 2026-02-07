@@ -6,24 +6,6 @@ This project follows **Semantic Versioning** (`MAJOR.MINOR.PATCH`) and maintains
 
 ---
 
-## [Unreleased]
-### Added
-- 
-- 
-- 
-- 
-
-### Changed
-- 
-
-### Fixed
-- 
-
-### Removed
-- 
-
----
-
 ## [0.1.0] - Feb 07, 2026
 ### Added
 #### Project Setup & Repository Foundation
