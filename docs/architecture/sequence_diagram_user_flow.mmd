@@ -1,1 +1,77 @@
+sequenceDiagram
+    autonumber
 
+    actor User
+    participant UI as Streamlit UI
+    participant API as FastAPI API
+    participant ORCH as Orchestrator
+    participant MEM as Session Memory
+    participant SAFE as Safety Guardrails
+
+    participant CF as CaseFinder (CLSA)
+    participant IS as IssueSpotter (LII)
+    participant LC as LimitationChecker (LAA)
+    participant AB as ArgumentBuilder (LAB)
+    participant DC as DocComposer (DGA)
+    participant CG as ComplianceGuard (CCA)
+    participant AC as AidConnector (LAF)
+
+    participant RET as Retriever
+    participant VS as Vector Store (Chroma/FAISS)
+    participant LLM as LLM Provider
+
+    User->>UI: Enter case facts + jurisdiction + case type
+    UI->>API: Submit intake form (JSON)
+    API->>ORCH: Start workflow(session_id)
+
+    ORCH->>SAFE: Validate input + enforce safety rules
+    SAFE-->>ORCH: Safe / Unsafe + reason
+
+    ORCH->>MEM: Load session context
+    MEM-->>ORCH: Previous history (if any)
+
+    ORCH->>CF: Task: Retrieve relevant precedents
+    CF->>RET: Build search query + filters
+    RET->>VS: Similarity search (top_k)
+    VS-->>RET: Candidate chunks + metadata
+    RET-->>CF: Ranked precedents + citations
+    CF-->>ORCH: Case law list + summary
+
+    ORCH->>IS: Task: Identify issues + applicable sections
+    IS->>LLM: Analyze facts + precedents
+    LLM-->>IS: Issues + legal provisions
+    IS-->>ORCH: Structured issue report
+
+    ORCH->>LC: Task: Check limitation/time-bar rules
+    LC->>LLM: Analyze dates + limitation rules
+    LLM-->>LC: Limitation status + warnings
+    LC-->>ORCH: Limitation analysis report
+
+    ORCH->>AB: Task: Build arguments + counter-arguments
+    AB->>LLM: Generate argument tree
+    LLM-->>AB: Arguments + counter arguments
+    AB-->>ORCH: Structured argument pack
+
+    ORCH->>DC: Task: Draft legal document
+    DC->>LLM: Draft based on templates + context
+    LLM-->>DC: Draft document text
+    DC-->>ORCH: Draft output
+
+    ORCH->>CG: Task: Validate compliance + filing checklist
+    CG->>LLM: Validate format + required sections
+    LLM-->>CG: Compliance checklist + corrections
+    CG-->>ORCH: Compliance report
+
+    ORCH->>AC: Task: Suggest legal aid options
+    AC->>LLM: Suggest aid resources + eligibility hints
+    LLM-->>AC: Legal aid suggestions
+    AC-->>ORCH: Aid report
+
+    ORCH->>SAFE: Final hallucination + citation validation
+    SAFE-->>ORCH: Validation results + warnings
+
+    ORCH-->>API: Final response package (JSON)
+    API-->>UI: Render report + draft + checklist
+    UI-->>User: Display results + download options
+
+    User-->>User: Human verification + lawyer review
