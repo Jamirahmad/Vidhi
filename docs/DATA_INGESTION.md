@@ -1,11 +1,3 @@
-# Vidhi — Data Ingestion & Vector Store Build (DATA_INGESTION.md)
-
-This document explains how **Vidhi** ingests legal documents (Supreme Court, High Courts, Tribunals, and user uploads), processes them into structured text + metadata, and builds a **searchable vector store** (FAISS/ChromaDB) that powers retrieval for the multi-agent workflow.
-
-It also explains how ingestion integrates with the **deployment approach** (Local + AWS Free Tier + Streamlit Cloud).
-
----
-
 ## 1. Purpose of Data Ingestion in Vidhi
 
 Vidhi depends on **retrieval-augmented generation (RAG)**.  
