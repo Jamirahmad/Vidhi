@@ -1,70 +1,46 @@
-flowchart TB
+flowchart LR
 
-subgraph L0[User Interaction Layer]
-  U[User]
-  UI[Streamlit UI or Web UI]
-  API[FastAPI Gateway]
+subgraph L0[User Layer]
+  U[User] --> UI[Streamlit UI]
+  UI --> API[FastAPI Gateway]
 end
 
-subgraph L1[Control and Orchestration Layer]
-  LRA[Legal Reasoning Orchestrator]
-  ROUTER[Task Router and Planner]
-  STATE[Session State Manager]
-  POLICY[Safety and Policy Guard]
-  AUDIT[Audit and Trace Logger]
+subgraph L1[Orchestration Layer]
+  API --> ORCH[Orchestrator]
+  ORCH --> ROUTER[Task Router]
+  ORCH --> STATE[Session Memory]
+  ORCH --> POLICY[Safety Guardrails]
+  ORCH --> AUDIT[Audit Logger]
 end
 
-subgraph L2[Multi Agent Execution Layer]
-  CLSA[CLSA CaseFinder - Precedent Retrieval]
-  LII[LII IssueSpotter - Issues and Sections]
-  LAA[LAA LimitationChecker - Time Bar Validation]
-  LAB[LAB ArgumentBuilder - Supporting and Counter Arguments]
-  DGA[DGA DocComposer - Draft Generator]
-  CCA[CCA ComplianceGuard - Filing and Format Checks]
-  LAF[LAF AidConnector - Legal Aid Suggestions]
+subgraph L2[Agent Layer]
+  ROUTER --> CLSA[CaseFinder Agent]
+  CLSA --> LII[IssueSpotter Agent]
+  LII --> LAA[LimitationChecker Agent]
+  LAA --> LAB[ArgumentBuilder Agent]
+  LAB --> DGA[DocComposer Agent]
+  DGA --> CCA[ComplianceGuard Agent]
+  CCA --> LAF[AidConnector Agent]
 end
 
-subgraph L3[Knowledge and Retrieval Layer]
-  RETR[Hybrid Retrieval Engine]
-  VDB[(Vector Store - Chroma or FAISS)]
-  META[(Metadata Index - SQLite or JSON)]
-  DOCS[(Document Store - PDF HTML Text)]
+subgraph L3[Retrieval Layer]
+  CLSA --> RETR[Hybrid Retriever]
+  RETR --> VDB[(Vector Store)]
+  VDB --> DOCS[(Document Store)]
+  VDB --> META[(Metadata Index)]
 end
 
-subgraph L4[Model and Tool Layer]
+subgraph L4[Model Layer]
   LLM[LLM Provider]
   EMB[Embedding Model]
-  OCR[OCR Engine]
 end
 
-subgraph L5[Outputs and Human Handoff Layer]
-  PACK[Response Packager - Citations and Drafts]
-  REPORT[Research Summary Output]
-  DRAFT[Draft Document Output]
-  HANDOFF[Human Review and Lawyer Validation]
+subgraph L5[Output Layer]
+  LAF --> PACK[Response Packager]
+  PACK --> REPORT[Research Report]
+  PACK --> DRAFT[Draft Document]
+  PACK --> HANDOFF[Human Lawyer Review]
 end
-
-subgraph L6[Data Ingestion Pipeline - Offline]
-  SRC[Legal Sources - SC HC Tribunals]
-  ING[Downloader and Scraper]
-  PARSE[Parser and OCR Extractor]
-  CLEAN[Cleaner and Normalizer]
-  CHUNK[Chunker]
-  INDEX[Index Builder]
-end
-
-
-U --> UI --> API --> LRA
-
-LRA --> ROUTER --> CLSA
-CLSA --> RETR --> VDB
-VDB --> PACK
-
-PACK --> LII --> LAA --> LAB --> DGA --> CCA --> LAF --> PACK
-
-LRA --> STATE
-LRA --> POLICY
-LRA --> AUDIT
 
 RETR --> EMB
 LII --> LLM
@@ -72,12 +48,4 @@ LAA --> LLM
 LAB --> LLM
 DGA --> LLM
 CCA --> LLM
-
-PACK --> REPORT
-PACK --> DRAFT
-PACK --> HANDOFF
-
-SRC --> ING --> PARSE --> CLEAN --> CHUNK --> INDEX --> VDB
-PARSE --> OCR
-INDEX --> META
-VDB --> DOCS
+PACK --> LLM
