@@ -41,3 +41,6 @@ Key directories (may expand over time):
 ```bash
 git clone https://github.com/<your-username>/vidhi.git
 cd vidhi
+exit
+
+### 2. Create Virtual Environment
