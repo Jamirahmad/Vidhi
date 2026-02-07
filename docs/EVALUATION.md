@@ -1,4 +1,4 @@
-# Evaluation Strategy (EVALUATION.md)
+# Evaluation Strategy
 
 This document defines how **Vidhi** evaluates accuracy, reliability, citation correctness, hallucination risk, and overall system performance across the end-to-end multi-agent workflow.
 
