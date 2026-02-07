@@ -1,30 +1,17 @@
 flowchart TD
 
-  %% ==========================================================
-  %% Vidhi - Data Ingestion Pipeline
-  %% File: docs/architecture/data_ingestion_pipeline.mmd
-  %% ==========================================================
-
   A[Legal Data Sources] --> B[Fetchers / Connectors]
-  B --> C[Raw Storage<br/>data/raw/]
-  C --> D[Parsers<br/>(PDF / HTML / OCR)]
-  D --> E[Cleaners<br/>(Text + Citation Cleaning)]
-  E --> F[Metadata Extractor<br/>(Court, Date, Case No, Sections)]
-  F --> G[Chunking Engine<br/>(chunking_rules.py)]
-  G --> H[Processed Storage<br/>data/processed/ + data/chunks/]
-  H --> I[Embedding Provider<br/>(OpenAI / Local Embeddings)]
+  B --> C[Raw Storage: data/raw/]
+  C --> D[Parsers: PDF / HTML / OCR]
+  D --> E[Cleaners: Text + Citation Cleaning]
+  E --> F[Metadata Extractor: Court, Date, Case No, Sections]
+  F --> G[Chunking Engine: chunking_rules.py]
+  G --> H[Processed Storage: data/processed/ and data/chunks/]
+  H --> I[Embedding Provider: OpenAI or Local]
   I --> J[Vector Store Builder]
   J --> K[(FAISS Index)]
   J --> L[(ChromaDB)]
   K --> M[Retriever Ready]
   L --> M[Retriever Ready]
   M --> N[CaseFinder Agent Uses Index]
-
-  %% Source Details
-  A --> A1[Supreme Court of India]
-  A --> A2[High Courts]
-  A --> A3[Tribunals]
-  A --> A4[User Uploads]
-
-  %% Notes
   N --> O[Outputs: Search Results + Citations]
