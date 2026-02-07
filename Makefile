@@ -40,24 +40,19 @@ freeze:
 	$(PIP) freeze > requirements.txt
 
 run-api:
-	@echo "Starting FastAPI server..."
-	$(PYTHON) -m src.api.main
+	bash scripts/run_api.sh
 
 run-ui:
-	@echo "Starting Streamlit UI..."
-	streamlit run src/ui/streamlit_app.py
+	bash scripts/run_ui.sh
 
 ingest:
-	@echo "Running ingestion pipeline..."
-	$(PYTHON) -m src.ingestion.pipelines.ingestion_runner
+	bash scripts/ingest_documents.sh
 
 build-vector:
-	@echo "Building vector store..."
-	$(PYTHON) scripts/build_vectorstore.py
+	bash scripts/build_vectorstore.sh
 
 test:
-	@echo "Running tests..."
-	pytest -v
+	bash scripts/run_tests.sh
 
 lint:
 	@echo "Running lint checks..."
