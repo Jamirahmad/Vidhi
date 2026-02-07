@@ -90,8 +90,8 @@ Each agent is evaluated separately before measuring full workflow performance.
 - Correct jurisdiction match
 
 **Metrics**
-- Precision@K
-- Recall@K
+- Precision
+- Recall
 - Mean Reciprocal Rank (MRR)
 - Coverage score (did it retrieve at least 1 binding authority?)
 
