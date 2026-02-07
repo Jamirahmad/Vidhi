@@ -1,11 +1,3 @@
-# Vidhi — Governance (Ethical Boundaries & Policy Rules)
-
-This document defines the governance framework for **Vidhi**, including ethical boundaries, system safety rules, and policy enforcement mechanisms.
-
-Vidhi is designed as a **legal research and drafting assistant**, not a replacement for legal professionals.
-
----
-
 ## 1. Governance Objectives
 
 Vidhi governance is built around these goals:
