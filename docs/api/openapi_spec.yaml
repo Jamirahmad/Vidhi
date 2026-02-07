@@ -1,1 +1,491 @@
+openapi: 3.0.3
+info:
+  title: Vidhi API
+  description: >
+    Vidhi is a multi-agent legal research and document automation platform for the Indian legal ecosystem.
+    This OpenAPI specification defines endpoints for case intake, research, argument generation, document drafting,
+    compliance checks, and human feedback capture.
 
+    Disclaimer: Vidhi does not provide legal advice. All outputs must be reviewed by qualified legal professionals.
+  version: 0.1.0
+  contact:
+    name: Vidhi Capstone Team
+    email: vidhi-support@example.com
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local Development Server
+  - url: https://vidhi-api.example.com
+    description: Production (placeholder)
+
+tags:
+  - name: Health
+    description: API health and status endpoints
+  - name: Case Intake
+    description: Case submission and intake endpoints
+  - name: Research
+    description: Legal research and precedent retrieval endpoints
+  - name: Arguments
+    description: Argument and counter-argument generation endpoints
+  - name: Documents
+    description: Draft legal document generation endpoints
+  - name: Compliance
+    description: Compliance and court formatting validation endpoints
+  - name: Feedback
+    description: Human feedback capture endpoints
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns API health status.
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/v1/intake:
+    post:
+      tags:
+        - Case Intake
+      summary: Submit case intake details
+      description: Creates a case record for Vidhi multi-agent workflow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseIntakeRequest"
+      responses:
+        "200":
+          description: Case intake stored successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseIntakeResponse"
+        "422":
+          description: Validation error
+
+  /api/v1/research:
+    post:
+      tags:
+        - Research
+      summary: Run legal research workflow
+      description: Retrieves relevant case laws and statutes based on the query.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResearchRequest"
+      responses:
+        "200":
+          description: Research results returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResearchResponse"
+        "422":
+          description: Validation error
+
+  /api/v1/arguments:
+    post:
+      tags:
+        - Arguments
+      summary: Generate arguments and counter-arguments
+      description: Generates supporting and counter-arguments based on facts and legal sections.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArgumentsRequest"
+      responses:
+        "200":
+          description: Arguments generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArgumentsResponse"
+        "422":
+          description: Validation error
+
+  /api/v1/documents/generate:
+    post:
+      tags:
+        - Documents
+      summary: Generate legal document draft
+      description: Generates a draft legal document (bail application, writ petition, affidavit, etc.).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentGenerationRequest"
+      responses:
+        "200":
+          description: Document generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentGenerationResponse"
+        "422":
+          description: Validation error
+
+  /api/v1/compliance/check:
+    post:
+      tags:
+        - Compliance
+      summary: Run compliance validation
+      description: Validates court-specific formatting, annexures, fees, and required sections.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ComplianceCheckRequest"
+      responses:
+        "200":
+          description: Compliance check completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComplianceCheckResponse"
+        "422":
+          description: Validation error
+
+  /api/v1/feedback:
+    post:
+      tags:
+        - Feedback
+      summary: Submit feedback for workflow improvement
+      description: Stores human feedback for evaluation, improvement, and iterative refinement.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackRequest"
+      responses:
+        "200":
+          description: Feedback received successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackResponse"
+        "422":
+          description: Validation error
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: vidhi-api
+        version:
+          type: string
+          example: 0.1.0
+      required:
+        - status
+        - service
+        - version
+
+    CaseIntakeRequest:
+      type: object
+      properties:
+        case_title:
+          type: string
+          example: Bail Application - NDPS Act
+        case_facts:
+          type: string
+          example: The accused was arrested with 50 grams of contraband. No independent witness was present.
+        jurisdiction:
+          type: string
+          example: Maharashtra High Court
+        case_type:
+          type: string
+          enum: [civil, criminal, tribunal]
+          example: criminal
+        language:
+          type: string
+          example: en
+      required:
+        - case_title
+        - case_facts
+        - jurisdiction
+        - case_type
+
+    CaseIntakeResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        message:
+          type: string
+          example: Case intake recorded successfully.
+        next_step:
+          type: string
+          example: Run research workflow
+      required:
+        - case_id
+        - message
+        - next_step
+
+    ResearchRequest:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        query:
+          type: string
+          example: Bail under NDPS Act, procedural lapses, lack of independent witness
+        top_k:
+          type: integer
+          default: 5
+          example: 5
+      required:
+        - case_id
+        - query
+
+    CitationItem:
+      type: object
+      properties:
+        court:
+          type: string
+          example: Supreme Court of India
+        case_name:
+          type: string
+          example: State vs XYZ
+        citation:
+          type: string
+          example: AIR 2018 SC 1234
+        url:
+          type: string
+          example: https://example.com/case1
+      required:
+        - court
+        - case_name
+        - citation
+
+    ResearchResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        research_summary:
+          type: string
+          example: Found 5 relevant precedents related to NDPS bail and procedural compliance.
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/CitationItem"
+        warnings:
+          type: array
+          items:
+            type: string
+          example:
+            - All citations must be verified from official sources before use.
+      required:
+        - case_id
+        - research_summary
+        - citations
+
+    ArgumentsRequest:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        facts:
+          type: string
+          example: Accused arrested with contraband. No independent witness.
+        sections:
+          type: array
+          items:
+            type: string
+          example:
+            - NDPS Act Section 37
+            - CrPC Section 439
+      required:
+        - case_id
+        - facts
+
+    ArgumentsResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        supporting_arguments:
+          type: array
+          items:
+            type: string
+          example:
+            - Procedural non-compliance reduces evidentiary reliability.
+            - Absence of independent witnesses creates reasonable doubt.
+        counter_arguments:
+          type: array
+          items:
+            type: string
+          example:
+            - Quantity indicates seriousness of offence.
+            - Section 37 requires strict satisfaction before granting bail.
+        note:
+          type: string
+          example: Arguments are generated for research support only and require human verification.
+      required:
+        - case_id
+        - supporting_arguments
+        - counter_arguments
+
+    DocumentGenerationRequest:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        document_type:
+          type: string
+          enum:
+            - bail_application
+            - legal_notice
+            - affidavit
+            - writ_petition
+            - civil_suit
+          example: bail_application
+        language:
+          type: string
+          example: en
+        include_citations:
+          type: boolean
+          default: true
+          example: true
+      required:
+        - case_id
+        - document_type
+
+    DocumentGenerationResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        document_type:
+          type: string
+          example: bail_application
+        output_path:
+          type: string
+          example: outputs/generated_documents/VIDHI-CASE-2026-00012_bail_application.md
+        message:
+          type: string
+          example: Draft generated successfully. Review required.
+      required:
+        - case_id
+        - document_type
+        - output_path
+        - message
+
+    ComplianceCheckRequest:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        document_path:
+          type: string
+          example: outputs/generated_documents/VIDHI-CASE-2026-00012_bail_application.md
+        court:
+          type: string
+          example: Bombay High Court
+      required:
+        - case_id
+        - document_path
+        - court
+
+    ComplianceCheckResponse:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        court:
+          type: string
+          example: Bombay High Court
+        compliance_status:
+          type: string
+          enum: [pass, needs_review, fail]
+          example: needs_review
+        issues_found:
+          type: array
+          items:
+            type: string
+          example:
+            - Missing annexure list
+            - Citation format needs manual verification
+        suggested_fixes:
+          type: array
+          items:
+            type: string
+          example:
+            - Add Annexure A, Annexure B sections
+            - Verify citation authenticity from official sources
+      required:
+        - case_id
+        - court
+        - compliance_status
+
+    FeedbackRequest:
+      type: object
+      properties:
+        case_id:
+          type: string
+          example: VIDHI-CASE-2026-00012
+        agent:
+          type: string
+          example: DocComposer
+        feedback_type:
+          type: string
+          enum: [correction, improvement, bug, suggestion, rating]
+          example: correction
+        message:
+          type: string
+          example: Document draft is good, but needs stronger limitation section.
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+      required:
+        - case_id
+        - agent
+        - feedback_type
+        - message
+
+    FeedbackResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: received
+        message:
+          type: string
+          example: Feedback stored successfully.
+      required:
+        - status
+        - message
