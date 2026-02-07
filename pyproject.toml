@@ -1,1 +1,119 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
+
+[project]
+name = "vidhi"
+version = "0.1.0"
+description = "Vidhi - Multi-Agent Legal Research and Document Drafting Assistant"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Jamirahmad Mulla" },
+    { name = "Manish Awari" },
+    { name = "Sandip Guliani" },
+    { name = "Sunny Shende" },
+    { name = "Wilson Johny" }
+]
+keywords = ["legal", "multi-agent", "rag", "fastapi", "streamlit", "vectorstore", "ai"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha"
+]
+
+dependencies = [
+    # Core
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.0.0",
+    "loguru>=0.7.0",
+
+    # API (FastAPI)
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "python-multipart>=0.0.9",
+
+    # UI (Streamlit)
+    "streamlit>=1.32.0",
+
+    # HTTP + scraping
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.1.0",
+
+    # Parsing + OCR
+    "pypdf>=4.0.0",
+    "pdfplumber>=0.11.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0.0",
+
+    # NLP utilities
+    "langdetect>=1.0.9",
+    "regex>=2023.12.25",
+
+    # Embeddings + Vectorstore
+    "numpy>=1.26.0",
+    "scikit-learn>=1.4.0",
+    "faiss-cpu>=1.8.0",
+    "chromadb>=0.4.24",
+
+    # Optional LLM integrations (placeholders)
+    "openai>=1.0.0",
+
+    # YAML for OpenAPI and configs
+    "pyyaml>=6.0.1"
+]
+
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.27.0",
+    "black>=24.0.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0"
+]
+
+
+[project.urls]
+Homepage = "https://github.com/your-org/vidhi"
+Repository = "https://github.com/your-org/vidhi"
+Issues = "https://github.com/your-org/vidhi/issues"
+
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+skip-string-normalization = false
+
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+
+[tool.ruff.format]
+quote-style = "double"
+
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
