@@ -1,15 +1,10 @@
 """
 Rate Limiter Middleware
 
-Implements a simple in-memory, IP-based rate limiter.
-This is suitable for:
-- Local development
-- Free-tier deployments
-- Streamlit / demo usage
-
-For production-scale deployments, replace this with:
-- Redis-backed rate limiting
-- API Gateway / Load Balancer throttling
+Simple in-memory IP-based rate limiting.
+Aligned with settings:
+- ENABLE_RATE_LIMITING
+- REQUESTS_PER_MINUTE
 """
 
 import time
@@ -24,11 +19,10 @@ from src.config.settings import get_settings
 logger = logging.getLogger("vidhi.rate_limiter")
 
 # ---------------------------------------------------------------------
-# In-memory store
+# In-memory rate limit store
 # ---------------------------------------------------------------------
-# Structure:
 # {
-#   "ip_address": {
+#   "ip": {
 #       "count": int,
 #       "window_start": float
 #   }
@@ -37,40 +31,32 @@ logger = logging.getLogger("vidhi.rate_limiter")
 
 _RATE_LIMIT_STORE: Dict[str, Dict[str, float]] = {}
 
+WINDOW_SECONDS = 60  # fixed window (per minute)
 
-# ---------------------------------------------------------------------
-# Middleware
-# ---------------------------------------------------------------------
 
 async def rate_limiter_middleware(request: Request, call_next):
     settings = get_settings()
 
-    # Rate limiting can be disabled via config (tests / internal usage)
     if not settings.ENABLE_RATE_LIMITING:
         return await call_next(request)
 
     client_ip = request.client.host if request.client else "unknown"
-    current_time = time.time()
+    now = time.time()
 
-    window_size = settings.RATE_LIMIT_WINDOW_SECONDS
-    max_requests = settings.RATE_LIMIT_MAX_REQUESTS
-
+    max_requests = settings.REQUESTS_PER_MINUTE
     record = _RATE_LIMIT_STORE.get(client_ip)
 
-    # -----------------------------------------------------------------
-    # First request from IP or expired window
-    # -----------------------------------------------------------------
-    if record is None or (current_time - record["window_start"]) > window_size:
+    # --------------------------------------------------------------
+    # New window or first request
+    # --------------------------------------------------------------
+    if record is None or (now - record["window_start"]) > WINDOW_SECONDS:
         _RATE_LIMIT_STORE[client_ip] = {
             "count": 1,
-            "window_start": current_time,
+            "window_start": now,
         }
     else:
         record["count"] += 1
 
-        # -------------------------------------------------------------
-        # Rate limit exceeded
-        # -------------------------------------------------------------
         if record["count"] > max_requests:
             logger.warning(
                 "Rate limit exceeded",
@@ -85,26 +71,21 @@ async def rate_limiter_middleware(request: Request, call_next):
                 status_code=429,
                 content={
                     "error": "rate_limit_exceeded",
-                    "message": (
-                        "Too many requests. Please slow down and try again later."
-                    ),
-                    "retry_after_seconds": window_size,
+                    "message": "Too many requests. Please retry after some time.",
+                    "retry_after_seconds": WINDOW_SECONDS,
                 },
                 headers={
-                    "Retry-After": str(window_size),
+                    "Retry-After": str(WINDOW_SECONDS),
                 },
             )
 
-    # -----------------------------------------------------------------
-    # Proceed with request
-    # -----------------------------------------------------------------
     response = await call_next(request)
 
-    # Optional: expose rate limit headers (useful for UI & debugging)
+    # Optional visibility headers
     response.headers["X-RateLimit-Limit"] = str(max_requests)
-    response.headers["X-RateLimit-Window"] = str(window_size)
     response.headers["X-RateLimit-Remaining"] = str(
         max(0, max_requests - _RATE_LIMIT_STORE[client_ip]["count"])
     )
+    response.headers["X-RateLimit-Window"] = str(WINDOW_SECONDS)
 
     return response
