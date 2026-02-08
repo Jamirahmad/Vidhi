@@ -1,1 +1,72 @@
+flowchart TB
 
+%% =========================
+%% User Access Layer
+%% =========================
+USER[User Browser]
+USER --> UI[Streamlit UI]
+
+%% =========================
+%% Application Layer
+%% =========================
+UI --> API[FastAPI Backend]
+
+API --> ORCH[Orchestrator]
+ORCH --> AGENTS[Multi-Agent System]
+
+%% =========================
+%% Agent Layer
+%% =========================
+subgraph AGENTS[Agent Execution Layer]
+  LRA[Legal Research Agent]
+  CLSA[CaseFinder Agent]
+  LII[Issue Identifier Agent]
+  LAA[Limitation Analysis Agent]
+  LAB[Argument Builder Agent]
+  DGA[Document Generation Agent]
+  CCA[Compliance Check Agent]
+  LAF[Legal Aid Finder Agent]
+end
+
+%% =========================
+%% Retrieval Layer
+%% =========================
+CLSA --> RETR[Hybrid Retriever]
+RETR --> VECTOR[Vector Store]
+
+%% =========================
+%% Storage Layer
+%% =========================
+VECTOR --> FAISS[FAISS Index]
+VECTOR --> CHROMA[Chroma DB]
+
+DATA[Local Data Storage]
+DATA --> FAISS
+DATA --> CHROMA
+
+%% =========================
+%% Model Layer
+%% =========================
+AGENTS --> LLM[LLM API]
+RETR --> EMB[Embedding Model]
+
+%% =========================
+%% Output Layer
+%% =========================
+AGENTS --> OUTPUT[Generated Outputs]
+
+OUTPUT --> REPORTS[Research Reports]
+OUTPUT --> DOCS[Draft Documents]
+OUTPUT --> COMPLIANCE[Compliance Reports]
+
+%% =========================
+%% Deployment Boundary
+%% =========================
+subgraph FREE[Free Tier Deployment]
+  UI
+  API
+  ORCH
+  AGENTS
+  VECTOR
+  DATA
+end
