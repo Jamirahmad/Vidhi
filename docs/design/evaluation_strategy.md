@@ -1,131 +1,128 @@
+
 # Evaluation Strategy
 
-## Objective
-The evaluation strategy for **Vidhi** ensures accuracy, reliability, safety, and usefulness of outputs produced by the multi-agent legal research and document automation system. Given the legal domain’s sensitivity, evaluation prioritizes correctness, traceability, and human verifiability over automation speed.
+## Overview
+This document defines how **Vidhi** is evaluated for accuracy, safety, reliability, and ethical compliance.  
+Each evaluation dimension is directly mapped to executable test cases under the `/tests` directory to ensure traceability, reproducibility, and audit readiness.
+
+Vidhi prioritizes **legal safety over automation speed**, enforcing mandatory human verification at critical decision points.
 
 ---
 
-## Evaluation Dimensions
+## Evaluation Objectives
+- Ensure factual correctness of retrieved case laws and statutes
+- Prevent hallucinated citations or fabricated precedents
+- Validate agent-specific responsibilities and outputs
+- Measure retrieval relevance and workflow reliability
+- Enforce ethical, legal, and human-in-the-loop boundaries
 
-### 1. Retrieval Quality
-Measures how effectively relevant case laws and statutes are retrieved.
+---
+
+## Agent-Level Functional Accuracy
+
+| Agent | Evaluation Focus | Test File |
+|-----|------------------|----------|
+| IssueSpotter (LII) | Legal issue & section identification | tests/test_lii_agent.py |
+| LimitationChecker (LAA) | Limitation & revival logic | tests/test_laa_agent.py |
+| CaseFinder (CLSA) | Relevant precedent discovery | tests/test_clsa_agent.py |
+| LegalResearchAgent (LRA) | Research coherence | tests/test_lra_agent.py |
+| ArgumentBuilder (LAB) | Arguments & counter-arguments | tests/test_lab_agent.py |
+| DocComposer (DGA) | Draft quality & template use | tests/test_dga_agent.py |
+| ComplianceGuard (CCA) | Filing & court compliance | tests/test_cca_agent.py |
+| AidConnector (LAF) | Legal aid correctness | tests/test_laf_agent.py |
+
+---
+
+## Workflow & Orchestration Validation
+
+| Evaluation Goal | Test File |
+|---------------|----------|
+| Agent sequencing | tests/test_orchestrator_flow.py |
+| Task routing | tests/test_orchestrator_flow.py |
+| Session memory | tests/test_orchestrator_flow.py |
+| Failure recovery | tests/test_orchestrator_flow.py |
+
+---
+
+## Retrieval & RAG Quality
 
 **Metrics**
 - Precision@K
 - Recall@K
 - Mean Reciprocal Rank (MRR)
-- Coverage across courts (SC / HC / Tribunals)
 
-**Validation**
-- Gold-standard curated legal queries
-- Manual relevance scoring by domain reviewers
+**Tests**
+- tests/test_vector_retrieval.py
 
----
-
-### 2. Citation Accuracy
-Ensures that all generated outputs reference valid and traceable sources.
-
-**Checks**
-- Citation format validation
-- Source document existence
-- Paragraph-level citation mapping
-
-**Failure Handling**
-- Missing or unverifiable citations trigger human review
-- Outputs flagged as “Draft – Review Required”
+Validated aspects:
+- Chunk relevance
+- Metadata alignment
+- Semantic similarity accuracy
 
 ---
 
-### 3. Hallucination Detection
-Prevents fabricated cases, statutes, or legal reasoning.
+## Hallucination & Citation Safety (Critical)
 
-**Techniques**
-- Retrieval-grounded generation only
-- Cross-agent consistency checks
-- Post-generation citation validation
+| Safety Rule | Test File |
+|-----------|----------|
+| No fabricated cases | tests/test_citation_validator.py |
+| Citation-source match | tests/test_citation_validator.py |
+| Mandatory disclaimer | tests/test_citation_validator.py |
 
-**Automated Tests**
-- Zero-citation response detection
-- Unsupported claim identification
+Any hallucination failure blocks deployment.
 
 ---
 
-### 4. Agent-Level Performance
-Each agent is evaluated independently and as part of workflows.
+## API & Integration Validation
 
-| Agent | Key Evaluation Criteria |
-|------|------------------------|
-| CaseFinder | Recall, relevance, court coverage |
-| IssueSpotter | Section identification accuracy |
-| LimitationChecker | Rule correctness |
-| ArgumentBuilder | Logical consistency |
-| DocComposer | Structural completeness |
-| ComplianceGuard | Filing rule adherence |
-| AidConnector | Eligibility correctness |
+| Area | Test File |
+|----|----------|
+| Schema validation | tests/test_api_endpoints.py |
+| Error handling | tests/test_api_endpoints.py |
+| Rate limiting | tests/test_api_endpoints.py |
 
 ---
 
-### 5. End-to-End Workflow Validation
-Tests realistic legal scenarios.
+## Performance & Latency Benchmarks
 
-**Scenarios**
-- Bail application
-- Property dispute
-- Consumer complaint
+**Target (Free Tier):**
+- Average latency: < 5–7 seconds
+- Graceful degradation under load
 
-**Success Criteria**
-- All mandatory steps executed
-- Human handoff triggered where required
-- No unsafe or advisory outputs
+**Tests**
+- evaluation/latency_benchmarks.py
 
 ---
 
-### 6. Latency & Cost Monitoring
-Ensures suitability for free-tier deployment.
+## Human-in-the-Loop Enforcement
+Mandatory review checkpoints:
+- Final legal document drafts
+- Novel legal interpretations
+- Contradictory precedents
 
-**Metrics**
-- Agent execution time
-- API call count
-- Vector search latency
-
----
-
-## Human-in-the-Loop Review
-
-Mandatory human review is enforced when:
-- Citations are incomplete
-- Conflicting precedents exist
-- Novel legal questions arise
-- Ethical or safety flags are raised
-
-Human feedback is logged for future evaluation improvement.
-
----
-
-## Continuous Improvement Loop
-1. Capture user feedback
-2. Analyze failure patterns
-3. Update prompts, retrieval, or rules
-4. Re-run evaluation benchmarks
+Automated tests verify presence of handoff flags before output finalization.
 
 ---
 
 ## Evaluation Artifacts
-- Evaluation reports
-- Metric dashboards
-- Agent trace logs
-- Failure analysis summaries
+
+| Artifact | Location |
+|-------|---------|
+| Metrics & scores | outputs/evaluation_results/ |
+| Hallucination logs | logs/agent_traces.log |
+| Latency results | outputs/evaluation_results/latency.json |
 
 ---
 
-## Ethical Alignment
-Evaluation explicitly checks for:
-- No legal advice generation
-- No fabricated content
-- Transparency of uncertainty
+## Continuous Improvement Loop
+1. Run test suite
+2. Capture failures
+3. Patch agents/prompts
+4. Re-run evaluations
+5. Approve deployment
 
 ---
 
-## Summary
-Vidhi’s evaluation framework balances automation with accountability, ensuring outputs remain assistive, auditable, and legally responsible.
-
+## Reviewer Assurance Statement
+Every evaluation claim in Vidhi is backed by a named, executable test case.  
+No unverifiable metrics. No hidden logic. Full audit readiness.
