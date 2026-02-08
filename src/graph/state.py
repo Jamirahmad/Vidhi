@@ -1,23 +1,27 @@
 from typing import TypedDict, List, Dict, Any
 
 
-class VidhiState(TypedDict):
-    session_id: str
+class GraphState(TypedDict):
+    """
+    Central state object passed across LangGraph nodes.
+    Mirrors orchestrator + agent contracts.
+    """
 
-    # Inputs
-    case_facts: Dict[str, Any]
-    jurisdiction: str
-    case_type: str
+    # Input
+    user_query: str
 
-    # Agent outputs
-    precedents: List[Dict[str, Any]]
+    # Core agent outputs
     issues: List[str]
+    precedents: List[Dict[str, Any]]
     limitation_analysis: Dict[str, Any]
     arguments: Dict[str, Any]
     draft_document: str
-    compliance_flags: List[str]
-    legal_aid_options: List[str]
+    compliance_report: Dict[str, Any]
+    legal_aid_info: Dict[str, Any]
 
-    # Observability
+    # Observability & evaluation
+    traces: List[Dict[str, Any]]
     evaluation: Dict[str, Any]
+
+    # Governance
     human_review_required: bool
