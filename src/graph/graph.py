@@ -1,27 +1,45 @@
 from langgraph.graph import StateGraph, END
-from .state import VidhiState
-from .nodes import *
+from .state import GraphState
+from .nodes import (
+    issue_identifier,
+    case_law_search,
+    limitation_analysis,
+    argument_builder,
+    document_generator,
+    compliance_check,
+    legal_aid_finder,
+)
+from .edges import build_edges
 
 
-def build_vidhi_graph():
-    graph = StateGraph(VidhiState)
+def build_graph():
+    """
+    Compiles the LangGraph multi-agent workflow.
 
-    graph.add_node("case_finder", case_finder_node)
-    graph.add_node("issue_spotter", issue_spotter_node)
-    graph.add_node("limitation_checker", limitation_checker_node)
-    graph.add_node("argument_builder", argument_builder_node)
-    graph.add_node("doc_composer", doc_composer_node)
-    graph.add_node("compliance_guard", compliance_guard_node)
-    graph.add_node("aid_connector", aid_connector_node)
+    This graph:
+    - Preserves existing agent logic
+    - Adds observability via shared state
+    - Enforces human-in-the-loop governance
+    """
 
-    graph.set_entry_point("case_finder")
+    builder = StateGraph(GraphState)
 
-    graph.add_edge("case_finder", "issue_spotter")
-    graph.add_edge("issue_spotter", "limitation_checker")
-    graph.add_edge("limitation_checker", "argument_builder")
-    graph.add_edge("argument_builder", "doc_composer")
-    graph.add_edge("doc_composer", "compliance_guard")
-    graph.add_edge("compliance_guard", "aid_connector")
-    graph.add_edge("aid_connector", END)
+    # Register nodes
+    builder.add_node("issue_identifier", issue_identifier)
+    builder.add_node("case_law_search", case_law_search)
+    builder.add_node("limitation_analysis", limitation_analysis)
+    builder.add_node("argument_builder", argument_builder)
+    builder.add_node("document_generator", document_generator)
+    builder.add_node("compliance_check", compliance_check)
+    builder.add_node("legal_aid_finder", legal_aid_finder)
 
-    return graph.compile()
+    # Entry point
+    builder.set_entry_point("issue_identifier")
+
+    # Edges
+    build_edges(builder)
+
+    # Exit
+    builder.add_edge("legal_aid_finder", END)
+
+    return builder.compile()
