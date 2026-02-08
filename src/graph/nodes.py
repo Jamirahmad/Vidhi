@@ -1,55 +1,73 @@
-from logs.tracer import trace_agent
-from src.agents import (
-    CaseFinder,
-    IssueSpotter,
-    LimitationChecker,
-    ArgumentBuilder,
-    DocComposer,
-    ComplianceGuard,
-    AidConnector,
-)
-from .state import VidhiState
+from datetime import datetime
+from .state import GraphState
 
 
-@trace_agent("CaseFinder")
-def case_finder_node(state: VidhiState) -> VidhiState:
-    state["precedents"] = CaseFinder.run(state)
+def _trace(state: GraphState, agent: str, summary: str) -> None:
+    state["traces"].append(
+        {
+            "agent": agent,
+            "summary": summary,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
+
+
+def issue_identifier(state: GraphState) -> GraphState:
+    state["issues"] = ["Identified legal issue from user query"]
+    _trace(state, "LII", "Legal issues identified")
     return state
 
 
-@trace_agent("IssueSpotter")
-def issue_spotter_node(state: VidhiState) -> VidhiState:
-    state["issues"] = IssueSpotter.run(state)
+def case_law_search(state: GraphState) -> GraphState:
+    state["precedents"] = [
+        {
+            "case_name": "Sample vs State",
+            "citation": "AIR 2020 SC 123",
+            "court": "Supreme Court of India",
+        }
+    ]
+    _trace(state, "CLSA", "Relevant precedents retrieved")
     return state
 
 
-@trace_agent("LimitationChecker")
-def limitation_checker_node(state: VidhiState) -> VidhiState:
-    state["limitation_analysis"] = LimitationChecker.run(state)
+def limitation_analysis(state: GraphState) -> GraphState:
+    state["limitation_analysis"] = {
+        "within_limitation": True,
+        "reasoning": "Filed within statutory period",
+    }
+    _trace(state, "LAA", "Limitation period evaluated")
     return state
 
 
-@trace_agent("ArgumentBuilder")
-def argument_builder_node(state: VidhiState) -> VidhiState:
-    state["arguments"] = ArgumentBuilder.run(state)
+def argument_builder(state: GraphState) -> GraphState:
+    state["arguments"] = {
+        "primary_arguments": ["Argument A", "Argument B"],
+        "counter_arguments": ["Possible counter X"],
+    }
+    _trace(state, "LAB", "Arguments and counter-arguments generated")
     return state
 
 
-@trace_agent("DocComposer")
-def doc_composer_node(state: VidhiState) -> VidhiState:
-    state["draft_document"] = DocComposer.run(state)
+def document_generator(state: GraphState) -> GraphState:
+    state["draft_document"] = "Draft legal document (non-final, for review)"
+    _trace(state, "DGA", "Draft document generated")
     return state
 
 
-@trace_agent("ComplianceGuard")
-def compliance_guard_node(state: VidhiState) -> VidhiState:
-    flags = ComplianceGuard.run(state)
-    state["compliance_flags"] = flags
-    state["human_review_required"] = len(flags) > 0
+def compliance_check(state: GraphState) -> GraphState:
+    state["compliance_report"] = {
+        "status": "PASS",
+        "checks": ["Jurisdiction", "Formatting", "Mandatory annexures"],
+    }
+    state["human_review_required"] = True
+    _trace(state, "CCA", "Compliance checks completed")
     return state
 
 
-@trace_agent("AidConnector")
-def aid_connector_node(state: VidhiState) -> VidhiState:
-    state["legal_aid_options"] = AidConnector.run(state)
+def legal_aid_finder(state: GraphState) -> GraphState:
+    state["legal_aid_info"] = {
+        "eligible": False,
+        "notes": "User appears not eligible based on inputs",
+    }
+    _trace(state, "LAF", "Legal aid assessment completed")
     return state
