@@ -143,7 +143,7 @@ Recommended Python libraries:
 
 ## Installation
 ```bash
-git clone https://github.com/yourusername/vidhi.git
+git clone https://github.com/Jamirahmad/vidhi.git
 cd vidhi
 pip install -r requirements.txt
 ```
