@@ -9,125 +9,122 @@ Responsibilities:
 - Escalate to human review on ambiguity or weak support
 """
 
-from typing import Dict, Any, List
+from __future__ import annotations
 
-from src.agents.base_agent import BaseAgent, AgentResultStatus
+from typing import Any
+
+from src.agents.base_agent import BaseAgent
 
 
-class ArgumentBuilderAgent(BaseAgent):
+class LABArgumentBuilderAgent(BaseAgent):
     """
-    LAB – Legal Argument Builder Agent
+    LAB - Legal Argument Builder Agent
+
+    Responsibility:
+    - Build structured pro and counter arguments based on issues + analysis.
+    - Should avoid fabricated case citations.
+    - Should produce argument structure suitable for legal drafting.
+
+    Output contract:
+    {
+        "arguments_text": str,
+        "pro_arguments": list[str],
+        "counter_arguments": list[str]
+    }
     """
 
-    def __init__(self):
-        super().__init__(
-            name="LAB_ArgumentBuilderAgent",
-            requires_human_review=True  # Arguments always need lawyer review
-        )
+    agent_name = "LABArgumentBuilderAgent"
+    agent_version = "2.0"
 
-    # ------------------------------------------------------------------
-    # Input Validation
-    # ------------------------------------------------------------------
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config)
 
-    def validate_input(self, input_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "legal_issues",
-            "precedents",
-            "limitation_analysis"
-        ]
+    def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Expected payload:
+        {
+            "issues": dict OR list[str] OR str,
+            "analysis_text": str (optional),
+            "case_description": str (optional)
+        }
+        """
+        issues_obj = payload.get("issues", [])
+        analysis_text = str(payload.get("analysis_text", "")).strip()
+        case_description = str(payload.get("case_description", "")).strip()
 
-        missing = [f for f in required_fields if f not in input_data]
-        if missing:
-            raise ValueError(f"Missing required input fields: {missing}")
+        issues: list[str] = []
 
-        if not isinstance(input_data["legal_issues"], list):
-            raise TypeError("legal_issues must be a list")
+        if isinstance(issues_obj, dict):
+            primary = issues_obj.get("primary_issues", []) or []
+            secondary = issues_obj.get("secondary_issues", []) or []
+            issues = [str(i).strip() for i in (primary + secondary) if str(i).strip()]
 
-        if not isinstance(input_data["precedents"], list):
-            raise TypeError("precedents must be a list")
+        elif isinstance(issues_obj, list):
+            issues = [str(i).strip() for i in issues_obj if str(i).strip()]
 
-        if not isinstance(input_data["limitation_analysis"], dict):
-            raise TypeError("limitation_analysis must be a dict")
+        elif isinstance(issues_obj, str):
+            issues = [issues_obj.strip()] if issues_obj.strip() else []
 
-    # ------------------------------------------------------------------
-    # Core Logic
-    # ------------------------------------------------------------------
+        pro_arguments: list[str] = []
+        counter_arguments: list[str] = []
 
-    def run(self, input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        issues: List[str] = input_data["legal_issues"]
-        precedents: List[Dict[str, Any]] = input_data["precedents"]
-        limitation = input_data["limitation_analysis"]
-
-        supporting_arguments: List[str] = []
-        counter_arguments: List[str] = []
-
-        # --- Build arguments issue-by-issue ---
-        for issue in issues:
-            issue_precedents = [
-                p for p in precedents
-                if issue.lower() in (p.get("summary", "").lower())
-            ]
-
-            if not issue_precedents:
-                counter_arguments.append(
-                    f"No strong precedent found directly supporting the issue: '{issue}'."
-                )
-                continue
-
-            for p in issue_precedents:
-                supporting_arguments.append(
-                    f"For the issue '{issue}', reliance may be placed on "
-                    f"{p.get('case_title')} ({p.get('court')}, {p.get('year')}), "
-                    f"which discusses similar legal principles."
-                )
-
-        # --- Limitation-aware counter arguments ---
-        if limitation.get("status") != AgentResultStatus.SUCCESS:
+        # If no issues found, return generic argument format
+        if not issues:
+            pro_arguments.append(
+                "The facts provided may support the claimant's position depending on evidence and applicable law."
+            )
             counter_arguments.append(
-                "Limitation applicability is unclear or potentially adverse; "
-                "this may be raised as a preliminary objection."
+                "The opposing party may dispute the claim based on lack of evidence, procedural defects, or limitation issues."
             )
 
-        # --- Confidence heuristic ---
-        confidence_score = min(
-            1.0,
-            (len(supporting_arguments) / max(len(issues), 1))
-        )
+        else:
+            for issue in issues:
+                pro_arguments.append(
+                    f"On the issue of '{issue}', the claimant may argue that the facts establish a legal right or breach."
+                )
+                pro_arguments.append(
+                    f"The claimant may further argue that the conduct of the opposing party violates applicable statutory obligations."
+                )
 
-        status = (
-            AgentResultStatus.SUCCESS
-            if confidence_score >= 0.6
-            else AgentResultStatus.UNCERTAIN
-        )
+                counter_arguments.append(
+                    f"On the issue of '{issue}', the opposing party may argue that the claim is not maintainable due to lack of legal basis."
+                )
+                counter_arguments.append(
+                    "The opposing party may argue that the claimant has not produced sufficient documentary or factual evidence."
+                )
+
+        # Add analysis-driven refinement
+        if analysis_text:
+            pro_arguments.append(
+                "The legal analysis supports the claimant’s position by highlighting key statutory interpretation and factual alignment."
+            )
+            counter_arguments.append(
+                "However, the opposing party may challenge the analysis by presenting alternative statutory interpretation or disputing facts."
+            )
+
+        if case_description:
+            pro_arguments.append(
+                "The factual background strengthens the claimant’s case if the timeline and evidence are consistent."
+            )
+            counter_arguments.append(
+                "If inconsistencies exist in the factual timeline, the opposing party may use them to weaken credibility."
+            )
+
+        # Build argument narrative text
+        lines: list[str] = []
+        lines.append("PRO ARGUMENTS:")
+        for idx, arg in enumerate(pro_arguments, start=1):
+            lines.append(f"{idx}. {arg}")
+
+        lines.append("")
+        lines.append("COUNTER ARGUMENTS:")
+        for idx, arg in enumerate(counter_arguments, start=1):
+            lines.append(f"{idx}. {arg}")
+
+        arguments_text = "\n".join(lines).strip()
 
         return {
-            "status": status,
-            "supporting_arguments": supporting_arguments,
+            "arguments_text": arguments_text,
+            "pro_arguments": pro_arguments,
             "counter_arguments": counter_arguments,
-            "confidence": round(confidence_score, 2),
-            "disclaimer": (
-                "These arguments are indicative drafts based on identified issues "
-                "and precedents and must be reviewed by a qualified legal professional."
-            )
         }
-
-    # ------------------------------------------------------------------
-    # Output Validation
-    # ------------------------------------------------------------------
-
-    def validate_output(self, output_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "status",
-            "supporting_arguments",
-            "counter_arguments"
-        ]
-
-        missing = [f for f in required_fields if f not in output_data]
-        if missing:
-            raise ValueError(f"Missing required output fields: {missing}")
-
-        if not isinstance(output_data["supporting_arguments"], list):
-            raise TypeError("supporting_arguments must be a list")
-
-        if not isinstance(output_data["counter_arguments"], list):
-            raise TypeError("counter_arguments must be a list")
