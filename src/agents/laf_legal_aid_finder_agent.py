@@ -8,118 +8,80 @@ Responsibilities:
 - Provide official links and next steps only
 """
 
-from typing import Dict, Any, List
+from __future__ import annotations
 
-from src.agents.base_agent import BaseAgent, AgentResultStatus
+from typing import Any
+
+from src.agents.base_agent import BaseAgent
 
 
-class LegalAidFinderAgent(BaseAgent):
+class LAFLegalAidFinderAgent(BaseAgent):
     """
-    LAF – Legal Aid Finder Agent
+    LAF - Legal Aid Finder Agent
+
+    Responsibility:
+    - Provide guidance on how to find legal aid services.
+    - Must avoid hallucinating specific phone numbers / office addresses.
+    - Must return structured output.
+
+    Output contract:
+    {
+        "legal_aid_options": list[str],
+        "summary": str
+    }
     """
 
-    def __init__(self):
-        super().__init__(
-            name="LAF_LegalAidFinderAgent",
-            requires_human_review=True  # Guidance impacts access to justice
-        )
+    agent_name = "LAFLegalAidFinderAgent"
+    agent_version = "2.0"
 
-    # ------------------------------------------------------------------
-    # Input Validation
-    # ------------------------------------------------------------------
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config)
 
-    def validate_input(self, input_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "jurisdiction",
-            "case_type",
-            "user_profile"
-        ]
+    def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Expected payload:
+        {
+            "jurisdiction": str,
+            "case_description": str (optional)
+        }
+        """
+        jurisdiction = str(payload.get("jurisdiction", "")).strip()
+        case_description = str(payload.get("case_description", "")).strip()
 
-        missing = [f for f in required_fields if f not in input_data]
-        if missing:
-            raise ValueError(f"Missing required input fields: {missing}")
+        legal_aid_options: list[str] = []
 
-        if not isinstance(input_data["user_profile"], dict):
-            raise TypeError("user_profile must be a dictionary")
+        if jurisdiction.lower() in {"india", "indian"}:
+            legal_aid_options.extend(
+                [
+                    "National Legal Services Authority (NALSA) – official legal aid framework in India.",
+                    "State Legal Services Authority (SLSA) – available in each state for free legal aid.",
+                    "District Legal Services Authority (DLSA) – district-level legal aid and legal awareness support.",
+                    "Legal aid clinics in law colleges recognized by State Legal Services Authorities.",
+                    "NGOs working in legal rights support (women, labor, consumer, tenant, etc.).",
+                ]
+            )
+            summary = (
+                "For India, legal aid is commonly provided through NALSA, SLSA, and DLSA. "
+                "You can approach your nearest District Court complex for DLSA help."
+            )
+        else:
+            legal_aid_options.extend(
+                [
+                    "Government-sponsored legal aid office in your jurisdiction.",
+                    "Bar Association pro-bono services (many courts provide assistance desks).",
+                    "Legal aid NGOs and community legal clinics.",
+                    "University law clinics offering free legal assistance.",
+                ]
+            )
+            summary = (
+                f"Legal aid guidance prepared for jurisdiction: {jurisdiction or 'UNKNOWN'}. "
+                "For accurate location-based details, consult your local court helpdesk or official government portal."
+            )
 
-    # ------------------------------------------------------------------
-    # Core Logic
-    # ------------------------------------------------------------------
-
-    def run(self, input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        jurisdiction = input_data["jurisdiction"]
-        case_type = input_data["case_type"].lower()
-
-        suggestions: List[Dict[str, str]] = []
-
-        # --- National Legal Services Authority ---
-        suggestions.append({
-            "name": "National Legal Services Authority (NALSA)",
-            "description": (
-                "Statutory body providing free legal services under the Legal Services "
-                "Authorities Act, 1987."
-            ),
-            "website": "https://nalsa.gov.in",
-            "scope": "Nationwide"
-        })
-
-        # --- State Legal Services Authority ---
-        suggestions.append({
-            "name": f"{jurisdiction} State Legal Services Authority",
-            "description": (
-                "Provides free legal aid and Lok Adalat services at the state and "
-                "district level."
-            ),
-            "website": "https://nalsa.gov.in/state-legal-services-authorities",
-            "scope": jurisdiction
-        })
-
-        # --- Court-based Legal Services ---
-        suggestions.append({
-            "name": "District / Taluk Legal Services Committee",
-            "description": (
-                "Legal aid clinics attached to district and taluk courts."
-            ),
-            "website": "https://nalsa.gov.in/legal-services-clinics",
-            "scope": "District level"
-        })
-
-        # --- Specialized forums ---
-        if case_type in {"consumer", "women", "child"}:
-            suggestions.append({
-                "name": "Specialized Legal Aid Clinics",
-                "description": (
-                    "Legal aid clinics for women, children, and consumer disputes."
-                ),
-                "website": "https://nalsa.gov.in/schemes",
-                "scope": "Case-type specific"
-            })
+        if case_description:
+            summary += " Eligibility for free legal aid may depend on income, case type, or vulnerability category."
 
         return {
-            "status": AgentResultStatus.SUCCESS,
-            "jurisdiction": jurisdiction,
-            "case_type": case_type,
-            "legal_aid_options": suggestions,
-            "disclaimer": (
-                "This information is provided for awareness only. "
-                "Eligibility and appointment of legal aid counsel "
-                "are determined by the respective legal services authorities."
-            )
+            "legal_aid_options": legal_aid_options,
+            "summary": summary.strip(),
         }
-
-    # ------------------------------------------------------------------
-    # Output Validation
-    # ------------------------------------------------------------------
-
-    def validate_output(self, output_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "status",
-            "legal_aid_options"
-        ]
-
-        missing = [f for f in required_fields if f not in output_data]
-        if missing:
-            raise ValueError(f"Missing required output fields: {missing}")
-
-        if not isinstance(output_data["legal_aid_options"], list):
-            raise TypeError("legal_aid_options must be a list")
