@@ -6,159 +6,130 @@ It exists to provide a stable validation-layer import path
 without duplicating citation validation logic.
 """
 
-# src/validation/citation_validator.py
-
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict
 from typing import Any, Optional
 
-
-@dataclass
-class CitationValidationResult:
-    """
-    Structured result for citation validation.
-    """
-    is_valid: bool
-    citations_found: list[str] = field(default_factory=list)
-    missing_citations: list[str] = field(default_factory=list)
-    invalid_citations: list[str] = field(default_factory=list)
-    notes: str = ""
+from src.common.schemas import CitationValidationResult
 
 
 class CitationValidator:
     """
-    Validates citations in legal outputs.
+    Citation Validator for legal responses.
 
-    This validator checks:
-    - Whether citations are present at all
-    - Whether the citations follow expected legal patterns
-    - Whether the content contains claims without citations
+    Purpose:
+    - Identify if legal output contains citations.
+    - Validate citation formatting (basic heuristic checks).
+    - Flag suspicious or fake-looking citations.
+    - Return a consistent structured response contract.
 
-    NOTE:
-    This does not confirm the citation exists in the real world.
-    It only validates formatting + presence.
+    Notes:
+    - This is NOT a real citation authenticity validator.
+    - This only ensures citation presence + pattern sanity.
     """
 
-    # Basic Indian legal citation patterns
-    CASE_CITATION_PATTERNS = [
-        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+\d+\b",                      # AIR 1995 SC 123
-        r"\b\d{4}\s*\(\d+\)\s*SCC\s*\d+\b",                        # 2012 (3) SCC 456
-        r"\b\d{4}\s*\(\d+\)\s*CriLJ\s*\d+\b",                      # 2005 (2) CriLJ 1200
-        r"\b\d{4}\s*\(\d+\)\s*ALLMR\s*\d+\b",                      # 2010 (4) ALLMR 22
-        r"\bMANU/[A-Z]{2,}/\d{3,4}/\d{4}\b",                       # MANU/SC/0123/2011
-        r"\b\d{4}\s*INSC\s*\d+\b",                                 # 2024 INSC 123
+    # Common Indian legal citation patterns
+    CITATION_PATTERNS = [
+        # SCC format: (2020) 3 SCC 123 OR 2020 (3) SCC 123
+        r"\(?\b\d{4}\)?\s*\(?\d+\)?\s*SCC\s*\d+\b",
+
+        # AIR format: AIR 2020 SC 1234
+        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+\d+\b",
+
+        # MANU format: MANU/SC/1234/2020
+        r"\bMANU/[A-Z]{2,}/\d{3,4}/\d{4}\b",
+
+        # Criminal Appeal No. 123 of 2020
+        r"\b(?:Criminal|Civil)\s+Appeal\s+No\.?\s*\d+\s+of\s+\d{4}\b",
+
+        # Writ Petition (C) No. 1234/2021
+        r"\bWrit\s+Petition\s*\(.*?\)\s*No\.?\s*\d+\/\d{4}\b",
     ]
 
-    STATUTE_PATTERNS = [
-        r"\bSection\s+\d+[A-Z]?\b",                                # Section 420
-        r"\bArticle\s+\d+\b",                                      # Article 21
-        r"\bIPC\b|\bCrPC\b|\bCPC\b",                               # IPC / CrPC / CPC
-        r"\bConstitution of India\b",                              # Constitution of India
-        r"\bIndian Penal Code\b",                                  # Indian Penal Code
-        r"\bCode of Criminal Procedure\b",                         # Code of Criminal Procedure
-        r"\bCode of Civil Procedure\b",                            # Code of Civil Procedure
+    # Suspicious citation patterns (heuristic)
+    SUSPICIOUS_PATTERNS = [
+        r"\bMANU/[A-Z]{2,}/0000/\d{4}\b",      # MANU/SC/0000/2023 suspicious
+        r"\b\d{4}\s*\(\d+\)\s*SCC\s*0\b",      # SCC 0 invalid
+        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+0\b",    # AIR 2020 SC 0 invalid
     ]
 
-    # Claims that generally require citations (heuristic)
-    STRONG_CLAIM_PATTERNS = [
-        r"\bheld that\b",
-        r"\bestablished that\b",
-        r"\bsettled law\b",
-        r"\bthe Supreme Court\b",
-        r"\bthe High Court\b",
-        r"\bit is well[- ]settled\b",
-        r"\bprecedent\b",
-        r"\bdoctrine\b",
-        r"\bconstitutional\b",
-    ]
+    def __init__(self):
+        self._citation_regex = re.compile("|".join(self.CITATION_PATTERNS), re.IGNORECASE)
+        self._suspicious_regex = re.compile("|".join(self.SUSPICIOUS_PATTERNS), re.IGNORECASE)
 
-    def __init__(self, min_citations_required: int = 1):
-        self.min_citations_required = min_citations_required
-
-        self._case_regex = re.compile("|".join(self.CASE_CITATION_PATTERNS), re.IGNORECASE)
-        self._statute_regex = re.compile("|".join(self.STATUTE_PATTERNS), re.IGNORECASE)
-        self._strong_claim_regex = re.compile("|".join(self.STRONG_CLAIM_PATTERNS), re.IGNORECASE)
-
-    def extract_citations(self, text: str) -> list[str]:
+    def validate(self, text: str) -> dict[str, Any]:
         """
-        Extract citations using regex patterns.
+        Validate citations in a given text.
+
+        Returns consistent contract:
+        {
+            "passed": bool,
+            "citation_count": int,
+            "citations_found": list[str],
+            "suspicious_citations": list[str],
+            "message": str
+        }
         """
         if not text or not text.strip():
-            return []
-
-        found = set()
-
-        for match in self._case_regex.findall(text):
-            found.add(match.strip())
-
-        for match in self._statute_regex.findall(text):
-            found.add(match.strip())
-
-        return sorted(found)
-
-    def validate(self, text: str, context: Optional[dict[str, Any]] = None) -> CitationValidationResult:
-        """
-        Validate citations inside text.
-
-        Returns:
-            CitationValidationResult
-        """
-        if not text or not text.strip():
-            return CitationValidationResult(
-                is_valid=False,
+            result = CitationValidationResult(
+                passed=False,
+                citation_count=0,
                 citations_found=[],
-                missing_citations=["No text provided for citation validation."],
-                notes="Empty output cannot be validated.",
+                suspicious_citations=[],
+                message="Empty text provided for citation validation.",
             )
+            return asdict(result)
 
-        citations_found = self.extract_citations(text)
+        citations_found = list(set(self._citation_regex.findall(text)))
+        suspicious_found = list(set(self._suspicious_regex.findall(text)))
 
-        # Determine if strong legal claims exist
-        strong_claims_present = bool(self._strong_claim_regex.search(text))
+        # Normalize output because regex findall can return tuples sometimes
+        citations_found = self._normalize_matches(citations_found)
+        suspicious_found = self._normalize_matches(suspicious_found)
 
-        missing_citations = []
-        invalid_citations = []
+        citation_count = len(citations_found)
 
-        # If strong claims exist but no citations exist, flag missing
-        if strong_claims_present and len(citations_found) < self.min_citations_required:
-            missing_citations.append(
-                "Strong legal claims detected but insufficient citations were found."
-            )
+        # Decision Logic
+        if citation_count == 0:
+            passed = False
+            message = "No legal citations detected in the text."
+        elif suspicious_found:
+            passed = False
+            message = "Suspicious citations detected. Validation failed."
+        else:
+            passed = True
+            message = "Citations detected and appear structurally valid."
 
-        # Validate citation formatting heuristically
-        # (Here we only detect citations that look malformed)
-        # Example malformed: "AIR SC" without year/page
-        malformed_patterns = [
-            r"\bAIR\s+SC\b",
-            r"\bSCC\b",
-            r"\bMANU/[A-Z]{2,}\b",
-        ]
-        malformed_regex = re.compile("|".join(malformed_patterns), re.IGNORECASE)
-
-        for m in malformed_regex.findall(text):
-            invalid_citations.append(m.strip())
-
-        # Additional checks based on context (if passed)
-        notes = ""
-        if context:
-            jurisdiction = str(context.get("jurisdiction", "")).strip()
-            if jurisdiction and jurisdiction.lower() not in {"india", "indian"}:
-                notes = f"Validator currently optimized for Indian legal citations. Jurisdiction: {jurisdiction}"
-
-        is_valid = True
-
-        if missing_citations:
-            is_valid = False
-
-        if invalid_citations:
-            is_valid = False
-
-        return CitationValidationResult(
-            is_valid=is_valid,
-            citations_found=citations_found,
-            missing_citations=missing_citations,
-            invalid_citations=sorted(set(invalid_citations)),
-            notes=notes,
+        result = CitationValidationResult(
+            passed=passed,
+            citation_count=citation_count,
+            citations_found=sorted(citations_found),
+            suspicious_citations=sorted(suspicious_found),
+            message=message,
         )
+
+        return asdict(result)
+
+    def _normalize_matches(self, matches: list[Any]) -> list[str]:
+        """
+        Regex findall may return:
+        - list[str]
+        - list[tuple[str, ...]]
+
+        Normalize into clean list[str].
+        """
+        normalized: list[str] = []
+
+        for m in matches:
+            if isinstance(m, tuple):
+                # pick the first non-empty entry
+                chosen = next((x for x in m if x), "")
+                if chosen:
+                    normalized.append(chosen.strip())
+            elif isinstance(m, str):
+                if m.strip():
+                    normalized.append(m.strip())
+
+        return list(set(normalized))
