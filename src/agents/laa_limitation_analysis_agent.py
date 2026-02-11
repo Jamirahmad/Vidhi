@@ -9,120 +9,104 @@ Responsibilities:
 - NEVER give a final legal opinion
 """
 
-from datetime import datetime
-from typing import Dict, Any, Optional
+from __future__ import annotations
 
-from src.agents.base_agent import BaseAgent, AgentResultStatus
+from typing import Any
+
+from src.agents.base_agent import BaseAgent
 
 
-class LimitationAnalysisAgent(BaseAgent):
+class LAALimitationAnalysisAgent(BaseAgent):
     """
-    LAA – Limitation Analysis Agent
+    LAA - Limitation Analysis Agent
+
+    Responsibility:
+    - Identify potential limitation period considerations.
+    - Provide structured and safe output (no fabricated statutory timelines).
+
+    NOTE:
+    Without exact filing dates and statute references, limitation analysis
+    must be generic and advisory.
+
+    Output contract:
+    {
+        "limitation_summary": str,
+        "potential_time_bars": list[str],
+        "recommended_actions": list[str]
+    }
     """
 
-    def __init__(self):
-        super().__init__(
-            name="LAA_LimitationAnalysisAgent",
-            requires_human_review=True  # Limitation is always lawyer-sensitive
+    agent_name = "LAALimitationAnalysisAgent"
+    agent_version = "2.0"
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config)
+
+    def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Expected payload:
+        {
+            "case_description": str,
+            "jurisdiction": str,
+            "document_type": str
+        }
+        """
+        case_description = str(payload.get("case_description", "")).strip()
+        jurisdiction = str(payload.get("jurisdiction", "")).strip()
+        document_type = str(payload.get("document_type", "")).strip()
+
+        potential_time_bars: list[str] = []
+        recommended_actions: list[str] = []
+
+        if not case_description:
+            limitation_summary = (
+                "No case details were provided. Limitation analysis cannot be performed without facts "
+                "such as incident date, cause of action date, and filing timeline."
+            )
+            return {
+                "limitation_summary": limitation_summary,
+                "potential_time_bars": [],
+                "recommended_actions": [
+                    "Provide the incident date / cause of action date.",
+                    "Provide filing date or expected filing timeline.",
+                    "Confirm the applicable statute governing the dispute.",
+                ],
+            }
+
+        # Generic risk-based output
+        limitation_summary = (
+            f"Limitation analysis was performed for jurisdiction: {jurisdiction or 'UNKNOWN'}. "
+            "Exact limitation period depends on the type of claim and relevant statute. "
+            "Since specific dates and statutory references are not provided, this assessment is general."
         )
 
-    # ------------------------------------------------------------------
-    # Input Validation
-    # ------------------------------------------------------------------
-
-    def validate_input(self, input_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "cause_of_action_date",
-            "current_date",
-            "case_type",
-            "jurisdiction"
-        ]
-
-        missing = [f for f in required_fields if f not in input_data]
-        if missing:
-            raise ValueError(f"Missing required input fields: {missing}")
-
-        try:
-            datetime.fromisoformat(input_data["cause_of_action_date"])
-            datetime.fromisoformat(input_data["current_date"])
-        except ValueError:
-            raise ValueError("Dates must be in ISO format (YYYY-MM-DD)")
-
-    # ------------------------------------------------------------------
-    # Core Logic
-    # ------------------------------------------------------------------
-
-    def run(self, input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        cause_date = datetime.fromisoformat(input_data["cause_of_action_date"])
-        current_date = datetime.fromisoformat(input_data["current_date"])
-        case_type = input_data["case_type"].lower()
-        jurisdiction = input_data["jurisdiction"]
-
-        days_elapsed = (current_date - cause_date).days
-
-        # --- Indicative limitation mapping (NON-EXHAUSTIVE) ---
-        limitation_days_map = {
-            "civil": 3 * 365,        # Typical civil suits (varies widely)
-            "consumer": 2 * 365,     # Consumer Protection Act
-            "criminal": None,        # No limitation for serious offences
-            "service": 1 * 365
-        }
-
-        limitation_days = limitation_days_map.get(case_type)
-
-        analysis_notes = []
-        status = AgentResultStatus.UNCERTAIN
-
-        if limitation_days is None:
-            analysis_notes.append(
-                "Limitation depends on offence severity; many criminal offences have no limitation."
+        # Heuristic hints (not hard legal advice)
+        if "delay" in case_description.lower():
+            potential_time_bars.append(
+                "The facts mention delay. This may raise limitation period concerns depending on the cause of action."
             )
-            status = AgentResultStatus.UNCERTAIN
 
-        else:
-            if days_elapsed <= limitation_days:
-                analysis_notes.append(
-                    f"Elapsed time ({days_elapsed} days) appears within indicative limitation period."
-                )
-                status = AgentResultStatus.SUCCESS
-            else:
-                analysis_notes.append(
-                    f"Elapsed time ({days_elapsed} days) exceeds indicative limitation period."
-                )
-                analysis_notes.append(
-                    "Condonation of delay or exception provisions may apply (to be reviewed by a lawyer)."
-                )
-                status = AgentResultStatus.UNCERTAIN
+        if "years" in case_description.lower() or "months" in case_description.lower():
+            potential_time_bars.append(
+                "Time duration is mentioned. Verify whether the period exceeds limitation thresholds under applicable law."
+            )
+
+        recommended_actions.extend(
+            [
+                "Identify the exact cause of action date.",
+                "Check the applicable Limitation Act / statute relevant to the dispute.",
+                "Confirm if any exception applies (e.g., fraud discovery, continuing cause, disability).",
+                "If delay exists, evaluate whether condonation of delay can be requested (if legally permissible).",
+            ]
+        )
+
+        if document_type:
+            recommended_actions.append(
+                f"Ensure the limitation considerations are addressed explicitly in the {document_type}."
+            )
 
         return {
-            "status": status,
-            "case_type": case_type,
-            "jurisdiction": jurisdiction,
-            "cause_of_action_date": cause_date.date().isoformat(),
-            "current_date": current_date.date().isoformat(),
-            "days_elapsed": days_elapsed,
-            "indicative_limitation_days": limitation_days,
-            "analysis_notes": analysis_notes,
-            "disclaimer": (
-                "This is an indicative limitation analysis only and must be "
-                "reviewed by a qualified legal professional."
-            )
+            "limitation_summary": limitation_summary,
+            "potential_time_bars": potential_time_bars,
+            "recommended_actions": recommended_actions,
         }
-
-    # ------------------------------------------------------------------
-    # Output Validation
-    # ------------------------------------------------------------------
-
-    def validate_output(self, output_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "status",
-            "days_elapsed",
-            "analysis_notes"
-        ]
-
-        missing = [f for f in required_fields if f not in output_data]
-        if missing:
-            raise ValueError(f"Missing required output fields: {missing}")
-
-        if not isinstance(output_data["analysis_notes"], list):
-            raise TypeError("analysis_notes must be a list")
