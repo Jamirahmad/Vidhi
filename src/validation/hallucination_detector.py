@@ -10,36 +10,32 @@ It intentionally contains NO model logic.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict
 from typing import Any, Optional
 
-
-@dataclass
-class HallucinationDetectionResult:
-    """
-    Structured output for hallucination detection.
-    """
-    hallucination_risk: str  # LOW / MEDIUM / HIGH
-    score: float
-    reasons: list[str] = field(default_factory=list)
-    flagged_segments: list[str] = field(default_factory=list)
+from src.common.schemas import HallucinationDetectionResult
 
 
 class HallucinationDetector:
     """
-    Heuristic hallucination detector for legal content.
+    Hallucination Detector (Heuristic)
 
-    This detector does NOT confirm truth.
-    It flags content patterns that typically indicate hallucination risk:
-    - strong absolute claims without citations
-    - fake-looking citations
-    - inconsistent legal phrasing
-    - suspicious case numbers
-    - overconfident wording
+    Purpose:
+    - Identify hallucination-like patterns in legal content.
+    - Provide risk classification: LOW / MEDIUM / HIGH.
+    - Produce consistent schema-based output.
 
-    Intended use:
-    - pipeline guardrails
-    - warning system before final draft is returned
+    Important:
+    - This detector does NOT verify legal correctness.
+    - It flags patterns that are commonly associated with hallucinations:
+        * overly confident language
+        * missing citations for strong legal claims
+        * suspicious citation formatting
+        * generic reference to "above case" without details
+
+    Designed for:
+    - intermediate pipeline validation
+    - final draft validation gate
     """
 
     ABSOLUTE_CLAIM_PATTERNS = [
@@ -55,13 +51,6 @@ class HallucinationDetector:
         r"\bconclusively\b",
     ]
 
-    FAKE_CITATION_PATTERNS = [
-        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+\d{1,2}\b",          # AIR 2020 SC 1 (too small page number suspicious)
-        r"\bMANU/[A-Z]{2,}/0000/\d{4}\b",                  # MANU/SC/0000/2023 suspicious
-        r"\b\d{4}\s*\(\d+\)\s*SCC\s*0\b",                  # SCC 0 suspicious
-        r"\b\d{4}\s*INSC\s*0\b",                           # INSC 0 suspicious
-    ]
-
     STRONG_LEGAL_ASSERTION_PATTERNS = [
         r"\bthe Supreme Court held\b",
         r"\bthe High Court held\b",
@@ -73,36 +62,52 @@ class HallucinationDetector:
         r"\bit is illegal\b",
         r"\bvoid ab initio\b",
         r"\bconstitutional right\b",
+        r"\bthere is no exception\b",
     ]
 
-    GENERIC_HALLUCINATION_PATTERNS = [
+    GENERIC_REFERENCE_PATTERNS = [
         r"\bas per the above case\b",
         r"\bas discussed earlier\b",
         r"\bthe case mentioned above\b",
+        r"\bthe judgement mentioned above\b",
         r"\bthe statute mentioned above\b",
         r"\bthe law clearly states\b",
         r"\bthe judgement states\b",
     ]
 
+    # Detect citations at all
+    CITATION_PATTERNS = [
+        r"\(?\b\d{4}\)?\s*\(?\d+\)?\s*SCC\s*\d+\b",     # SCC citation
+        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+\d+\b",           # AIR citation
+        r"\bMANU/[A-Z]{2,}/\d{3,4}/\d{4}\b",            # MANU citation
+    ]
+
+    # Suspicious citations
+    SUSPICIOUS_CITATION_PATTERNS = [
+        r"\bMANU/[A-Z]{2,}/0000/\d{4}\b",
+        r"\b\d{4}\s*\(\d+\)\s*SCC\s*0\b",
+        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+0\b",
+    ]
+
     def __init__(self):
         self._absolute_regex = re.compile("|".join(self.ABSOLUTE_CLAIM_PATTERNS), re.IGNORECASE)
-        self._fake_citation_regex = re.compile("|".join(self.FAKE_CITATION_PATTERNS), re.IGNORECASE)
-        self._strong_assertion_regex = re.compile("|".join(self.STRONG_LEGAL_ASSERTION_PATTERNS), re.IGNORECASE)
-        self._generic_hallu_regex = re.compile("|".join(self.GENERIC_HALLUCINATION_PATTERNS), re.IGNORECASE)
+        self._strong_assertion_regex = re.compile(
+            "|".join(self.STRONG_LEGAL_ASSERTION_PATTERNS), re.IGNORECASE
+        )
+        self._generic_ref_regex = re.compile("|".join(self.GENERIC_REFERENCE_PATTERNS), re.IGNORECASE)
 
-        # Citation regex used to detect if any citations exist at all
-        self._citation_regex = re.compile(
-            r"(AIR\s+\d{4}\s+[A-Z]{2,}\s+\d+)|(\d{4}\s*\(\d+\)\s*SCC\s*\d+)|(MANU/[A-Z]{2,}/\d{3,4}/\d{4})",
-            re.IGNORECASE,
+        self._citation_regex = re.compile("|".join(self.CITATION_PATTERNS), re.IGNORECASE)
+        self._suspicious_citation_regex = re.compile(
+            "|".join(self.SUSPICIOUS_CITATION_PATTERNS), re.IGNORECASE
         )
 
-    def detect(
-        self,
-        text: str,
-        context: Optional[dict[str, Any]] = None,
-    ) -> HallucinationDetectionResult:
+    def detect(self, text: str, context: Optional[dict[str, Any]] = None) -> HallucinationDetectionResult:
         """
-        Detect hallucination risk in legal draft.
+        Detect hallucination risk.
+
+        Args:
+            text: input legal text (analysis/arguments/draft)
+            context: optional metadata (jurisdiction, request_id, etc.)
 
         Returns:
             HallucinationDetectionResult
@@ -111,56 +116,71 @@ class HallucinationDetector:
             return HallucinationDetectionResult(
                 hallucination_risk="HIGH",
                 score=1.0,
-                reasons=["Empty response received. High hallucination risk due to missing content."],
+                reasons=["Empty response text. High hallucination risk."],
                 flagged_segments=[],
             )
 
-        reasons = []
-        flagged_segments = []
+        text = text.strip()
+        reasons: list[str] = []
+        flagged_segments: list[str] = []
 
         score = 0.0
 
-        # 1. Absolute claims increase risk
-        absolute_matches = self._absolute_regex.findall(text)
-        if absolute_matches:
+        # -------------------------------------------------------------
+        # 1. Overconfident / absolute language
+        # -------------------------------------------------------------
+        abs_matches = self._absolute_regex.findall(text)
+        if abs_matches:
             score += 0.20
-            reasons.append("Overconfident/absolute language detected.")
-            flagged_segments.extend(list(set(absolute_matches)))
+            reasons.append("Overconfident or absolute language detected.")
+            flagged_segments.extend(abs_matches)
 
+        # -------------------------------------------------------------
         # 2. Strong legal assertions without citations
-        strong_assertions = self._strong_assertion_regex.findall(text)
+        # -------------------------------------------------------------
+        strong_matches = self._strong_assertion_regex.findall(text)
         citations_present = bool(self._citation_regex.search(text))
 
-        if strong_assertions and not citations_present:
+        if strong_matches and not citations_present:
             score += 0.35
-            reasons.append("Strong legal assertions present without citations.")
-            flagged_segments.extend(list(set(strong_assertions)))
+            reasons.append("Strong legal assertions found without citations.")
+            flagged_segments.extend(strong_matches)
 
-        # 3. Fake-looking citations
-        fake_citations = self._fake_citation_regex.findall(text)
-        if fake_citations:
-            score += 0.40
-            reasons.append("Suspicious or malformed citations detected.")
-            flagged_segments.extend(list(set(fake_citations)))
-
-        # 4. Generic hallucination phrases
-        generic_phrases = self._generic_hallu_regex.findall(text)
-        if generic_phrases:
+        # -------------------------------------------------------------
+        # 3. Generic references ("above case") without context
+        # -------------------------------------------------------------
+        generic_matches = self._generic_ref_regex.findall(text)
+        if generic_matches:
             score += 0.15
-            reasons.append("Generic referencing language detected (possible fabricated context).")
-            flagged_segments.extend(list(set(generic_phrases)))
+            reasons.append("Generic references found without clear legal grounding.")
+            flagged_segments.extend(generic_matches)
 
-        # 5. Context-based heuristics
+        # -------------------------------------------------------------
+        # 4. Suspicious citations
+        # -------------------------------------------------------------
+        suspicious_matches = self._suspicious_citation_regex.findall(text)
+        if suspicious_matches:
+            score += 0.40
+            reasons.append("Suspicious citation patterns detected.")
+            flagged_segments.extend(suspicious_matches)
+
+        # -------------------------------------------------------------
+        # 5. Context-based jurisdiction mismatch heuristic
+        # -------------------------------------------------------------
         if context:
             jurisdiction = str(context.get("jurisdiction", "")).strip().lower()
             if jurisdiction and jurisdiction not in {"india", "indian"}:
-                score += 0.05
-                reasons.append("Jurisdiction is non-Indian but output patterns appear India-specific.")
+                # If output contains India-specific citations but jurisdiction isn't India
+                if re.search(r"\bSCC\b|\bAIR\b|\bMANU/SC\b", text, re.IGNORECASE):
+                    score += 0.10
+                    reasons.append(
+                        "Possible jurisdiction mismatch: India-specific citation style used for non-Indian jurisdiction."
+                    )
 
-        # Clamp score to [0, 1]
+        # Clamp score
         score = max(0.0, min(score, 1.0))
 
-        # Risk bands
+        # Risk classification
         if score >= 0.70:
             risk = "HIGH"
         elif score >= 0.35:
@@ -169,11 +189,20 @@ class HallucinationDetector:
             risk = "LOW"
 
         if not reasons:
-            reasons.append("No strong hallucination indicators detected.")
+            reasons.append("No major hallucination indicators detected.")
+
+        # Clean duplicates
+        flagged_segments = sorted(set([seg.strip() for seg in flagged_segments if seg.strip()]))
 
         return HallucinationDetectionResult(
             hallucination_risk=risk,
-            score=score,
+            score=round(score, 3),
             reasons=reasons,
-            flagged_segments=sorted(set(flagged_segments)),
+            flagged_segments=flagged_segments,
         )
+
+    def detect_as_dict(self, text: str, context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """
+        Convenience wrapper for components that want dict output.
+        """
+        return asdict(self.detect(text, context=context))
