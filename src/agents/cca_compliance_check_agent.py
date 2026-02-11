@@ -11,133 +11,104 @@ This agent NEVER auto-fixes content.
 It only validates and flags issues.
 """
 
-from typing import Dict, Any, List
+from __future__ import annotations
 
-from src.agents.base_agent import BaseAgent, AgentResultStatus
+from typing import Any
+
+from src.agents.base_agent import BaseAgent
+from src.core.safety_guardrails import SafetyGuardrails
 
 
-class ComplianceCheckAgent(BaseAgent):
+class CCAComplianceCheckAgent(BaseAgent):
     """
-    Compliance Guard Agent (CCA)
+    CCA - Compliance Check Agent
+
+    Responsibility:
+    - Validate whether the system can proceed with legal draft generation.
+    - Enforce safety guardrails for restricted content.
+    - Provide structured compliance decision.
+
+    Output contract:
+    {
+        "can_generate_draft": bool,
+        "notes": str,
+        "disclaimer_required": bool,
+        "disclaimer_text": str,
+        "flagged_risks": list[str]
+    }
     """
 
-    def __init__(self):
-        super().__init__(
-            name="CCA_ComplianceCheckAgent",
-            requires_human_review=True  # Compliance ALWAYS needs lawyer sign-off
+    agent_name = "CCAComplianceCheckAgent"
+    agent_version = "2.0"
+
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config)
+        self.guardrails = SafetyGuardrails()
+
+    def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Expected payload:
+        {
+            "request_id": str,
+            "case_description": str,
+            "jurisdiction": str,
+            "document_type": str,
+            "analysis_text": str (optional),
+            "arguments_text": str (optional)
+        }
+        """
+        case_description = str(payload.get("case_description", "")).strip()
+        jurisdiction = str(payload.get("jurisdiction", "")).strip()
+        document_type = str(payload.get("document_type", "")).strip()
+
+        analysis_text = str(payload.get("analysis_text", "")).strip()
+        arguments_text = str(payload.get("arguments_text", "")).strip()
+
+        combined_text = "\n\n".join(
+            [t for t in [case_description, analysis_text, arguments_text] if t]
+        ).strip()
+
+        if not combined_text:
+            return {
+                "can_generate_draft": False,
+                "notes": "No content provided for compliance evaluation.",
+                "disclaimer_required": True,
+                "disclaimer_text": "No sufficient details were provided. This output is informational only.",
+                "flagged_risks": ["EMPTY_INPUT"],
+            }
+
+        safety_result = self.guardrails.evaluate(
+            user_input=combined_text,
+            jurisdiction=jurisdiction,
+            document_type=document_type,
         )
 
-    # ------------------------------------------------------------------
-    # Input Validation
-    # ------------------------------------------------------------------
+        # safety_result expected structure (based on review guardrails design):
+        # {
+        #   "allowed": bool,
+        #   "flagged_categories": [...],
+        #   "message": "...",
+        #   "disclaimer_required": bool,
+        #   "disclaimer_text": "..."
+        # }
 
-    def validate_input(self, input_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "draft_document",
-            "jurisdiction",
-            "court",
-            "case_type"
-        ]
+        allowed = bool(safety_result.get("allowed", True))
+        flagged_categories = safety_result.get("flagged_categories", []) or []
+        message = str(safety_result.get("message", "")).strip()
 
-        missing = [field for field in required_fields if field not in input_data]
+        disclaimer_required = bool(safety_result.get("disclaimer_required", False))
+        disclaimer_text = str(safety_result.get("disclaimer_text", "")).strip()
 
-        if missing:
-            raise ValueError(f"Missing required input fields: {missing}")
-
-        if not isinstance(input_data["draft_document"], str):
-            raise TypeError("draft_document must be a string")
-
-    # ------------------------------------------------------------------
-    # Core Logic
-    # ------------------------------------------------------------------
-
-    def run(self, input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        draft = input_data["draft_document"]
-        jurisdiction = input_data["jurisdiction"]
-        court = input_data["court"]
-        case_type = input_data["case_type"]
-
-        issues: List[str] = []
-        checks_performed: List[str] = []
-
-        # --- Universal Checks ---
-        checks_performed.append("basic_structure_check")
-        if len(draft.strip()) < 500:
-            issues.append("Draft appears unusually short for a legal filing")
-
-        # --- Mandatory Sections ---
-        mandatory_sections = [
-            "Facts",
-            "Prayer",
-            "Verification"
-        ]
-
-        for section in mandatory_sections:
-            checks_performed.append(f"section_check:{section}")
-            if section.lower() not in draft.lower():
-                issues.append(f"Missing mandatory section: {section}")
-
-        # --- Case-Type Specific Checks ---
-        if case_type.lower() == "criminal":
-            checks_performed.append("criminal_case_checks")
-            if "IPC" not in draft and "CrPC" not in draft:
-                issues.append("No IPC / CrPC sections referenced in criminal case")
-
-        if case_type.lower() == "civil":
-            checks_performed.append("civil_case_checks")
-            if "CPC" not in draft:
-                issues.append("No CPC sections referenced in civil case")
-
-        # --- Court-Specific Checks (High-Level) ---
-        checks_performed.append("court_specific_checks")
-        if court.lower() == "supreme court" and "Article 136" not in draft:
-            issues.append("Possible missing reference to Article 136 for Supreme Court filing")
-
-        # --- Annexures & Signatures ---
-        checks_performed.append("annexure_check")
-        if "Annexure" not in draft:
-            issues.append("No annexures referenced")
-
-        checks_performed.append("signature_check")
-        if "Advocate" not in draft and "Counsel" not in draft:
-            issues.append("Advocate signature / designation not found")
-
-        status = (
-            AgentResultStatus.SUCCESS
-            if not issues
-            else AgentResultStatus.UNCERTAIN
-        )
+        if not disclaimer_text:
+            disclaimer_text = (
+                "This response is generated for informational purposes only "
+                "and does not constitute legal advice."
+            )
 
         return {
-            "status": status,
-            "issues_found": issues,
-            "checks_performed": checks_performed,
-            "jurisdiction": jurisdiction,
-            "court": court,
-            "case_type": case_type,
-            "compliance_summary": (
-                "No major compliance issues detected"
-                if not issues
-                else "Compliance issues detected – lawyer review required"
-            )
+            "can_generate_draft": allowed,
+            "notes": message if message else "Compliance evaluation completed.",
+            "disclaimer_required": disclaimer_required,
+            "disclaimer_text": disclaimer_text,
+            "flagged_risks": flagged_categories,
         }
-
-    # ------------------------------------------------------------------
-    # Output Validation
-    # ------------------------------------------------------------------
-
-    def validate_output(self, output_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "status",
-            "issues_found",
-            "checks_performed",
-            "compliance_summary"
-        ]
-
-        missing = [field for field in required_fields if field not in output_data]
-
-        if missing:
-            raise ValueError(f"Missing required output fields: {missing}")
-
-        if not isinstance(output_data["issues_found"], list):
-            raise TypeError("issues_found must be a list")
