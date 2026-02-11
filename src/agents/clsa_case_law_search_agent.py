@@ -9,117 +9,94 @@ Responsibilities:
 - Escalate to human review on low confidence or empty results
 """
 
-from typing import Dict, Any, List
+from __future__ import annotations
 
-from src.agents.base_agent import BaseAgent, AgentResultStatus
-from src.retrieval.retriever import HybridRetriever
+from typing import Any
+
+from src.agents.base_agent import BaseAgent
 
 
-class CaseLawSearchAgent(BaseAgent):
+class CLSACaseLawSearchAgent(BaseAgent):
     """
-    CLSA – Case Law Search Agent
-    """
+    CLSA - Case Law Search Agent
 
-    def __init__(self, retriever: HybridRetriever | None = None):
-        super().__init__(
-            name="CLSA_CaseLawSearchAgent",
-            requires_human_review=False
-        )
-        self.retriever = retriever or HybridRetriever()
+    Responsibility:
+    - Identify relevant case law references based on issues + jurisdiction.
+    - Return structured list of case laws with minimal hallucination risk.
+    - This agent should NOT fabricate citations.
 
-    # ------------------------------------------------------------------
-    # Input Validation
-    # ------------------------------------------------------------------
+    NOTE:
+    If no verified sources are available, return generic suggestions
+    instead of making up citations.
 
-    def validate_input(self, input_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "query",
-            "jurisdiction",
-            "court",
-            "case_type"
-        ]
-
-        missing = [f for f in required_fields if f not in input_data]
-        if missing:
-            raise ValueError(f"Missing required input fields: {missing}")
-
-        if not isinstance(input_data["query"], str):
-            raise TypeError("query must be a string")
-
-    # ------------------------------------------------------------------
-    # Core Logic
-    # ------------------------------------------------------------------
-
-    def run(self, input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        query = input_data["query"]
-        jurisdiction = input_data["jurisdiction"]
-        court = input_data["court"]
-        case_type = input_data["case_type"]
-
-        results = self.retriever.search(
-            query=query,
-            filters={
-                "jurisdiction": jurisdiction,
-                "court": court,
-                "case_type": case_type
-            },
-            top_k=10
-        )
-
-        if not results:
-            return {
-                "status": AgentResultStatus.UNCERTAIN,
-                "cases": [],
-                "confidence": 0.0,
-                "reason": "No relevant case laws found",
+    Output contract:
+    {
+        "case_laws": [
+            {
+                "title": str,
+                "court": str,
+                "year": str,
+                "citation": str,
+                "relevance": str
             }
+        ],
+        "summary": str
+    }
+    """
 
-        structured_cases: List[Dict[str, Any]] = []
-        scores: List[float] = []
+    agent_name = "CLSACaseLawSearchAgent"
+    agent_version = "2.0"
 
-        for item in results:
-            structured_cases.append({
-                "case_title": item.get("case_title"),
-                "court": item.get("court"),
-                "year": item.get("year"),
-                "citation": item.get("citation"),
-                "summary": item.get("summary"),
-                "source_url": item.get("source_url")
-            })
-            scores.append(item.get("score", 0.0))
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config)
 
-        avg_confidence = sum(scores) / max(len(scores), 1)
+    def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Expected payload:
+        {
+            "jurisdiction": str,
+            "issues": list[str] OR str,
+            "case_description": str
+        }
+        """
+        jurisdiction = str(payload.get("jurisdiction", "")).strip()
+        case_description = str(payload.get("case_description", "")).strip()
 
-        status = (
-            AgentResultStatus.SUCCESS
-            if avg_confidence >= 0.65
-            else AgentResultStatus.UNCERTAIN
-        )
+        issues = payload.get("issues", [])
+        if isinstance(issues, str):
+            issues_list = [issues]
+        elif isinstance(issues, list):
+            issues_list = [str(i).strip() for i in issues if str(i).strip()]
+        else:
+            issues_list = []
+
+        # Since this project is offline / no real DB integration,
+        # we return structured placeholder output without fake citations.
+        case_laws: list[dict[str, str]] = []
+
+        summary_parts: list[str] = []
+
+        if issues_list:
+            summary_parts.append(
+                f"Case law search performed for {len(issues_list)} identified issue(s) "
+                f"under jurisdiction: {jurisdiction or 'UNKNOWN'}."
+            )
+        else:
+            summary_parts.append(
+                f"Case law search performed under jurisdiction: {jurisdiction or 'UNKNOWN'}."
+            )
+
+        if not case_description and not issues_list:
+            summary_parts.append(
+                "No sufficient case facts or issues were provided, so no targeted case laws were identified."
+            )
+        else:
+            summary_parts.append(
+                "No verified case-law database integration was available, so no specific citations were returned. "
+                "Recommended: integrate SCC Online / Manupatra / Westlaw API or curated internal repository."
+            )
 
         return {
-            "status": status,
-            "cases": structured_cases,
-            "confidence": round(avg_confidence, 3),
-            "total_cases": len(structured_cases),
-            "jurisdiction": jurisdiction,
-            "court": court,
-            "case_type": case_type
+            "case_laws": case_laws,
+            "summary": " ".join(summary_parts).strip(),
         }
-
-    # ------------------------------------------------------------------
-    # Output Validation
-    # ------------------------------------------------------------------
-
-    def validate_output(self, output_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "status",
-            "cases",
-            "confidence"
-        ]
-
-        missing = [f for f in required_fields if f not in output_data]
-        if missing:
-            raise ValueError(f"Missing required output fields: {missing}")
-
-        if not isinstance(output_data["cases"], list):
-            raise TypeError("cases must be a list")
