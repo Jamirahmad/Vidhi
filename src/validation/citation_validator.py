@@ -5,131 +5,285 @@ This module is a thin adapter over the core citation validator.
 It exists to provide a stable validation-layer import path
 without duplicating citation validation logic.
 """
+# src/validation/citation_validator.py
 
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-from src.common.schemas import CitationValidationResult
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class CitationIssue:
+    """
+    Represents a citation validation issue.
+    """
+    issue_type: str
+    message: str
+    evidence: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "issue_type": self.issue_type,
+            "message": self.message,
+            "evidence": self.evidence,
+        }
 
 
 class CitationValidator:
     """
-    Citation Validator for legal responses.
+    Citation Validator for Vidhi.
 
-    Purpose:
-    - Identify if legal output contains citations.
-    - Validate citation formatting (basic heuristic checks).
-    - Flag suspicious or fake-looking citations.
-    - Return a consistent structured response contract.
-
-    Notes:
-    - This is NOT a real citation authenticity validator.
-    - This only ensures citation presence + pattern sanity.
+    Review-based improvements included:
+    - deterministic output schema
+    - tolerant parsing (works even if agents return different citation formats)
+    - validates presence + format + inline citation matching
+    - avoids hard failure (always returns dict)
     """
 
-    # Common Indian legal citation patterns
-    CITATION_PATTERNS = [
-        # SCC format: (2020) 3 SCC 123 OR 2020 (3) SCC 123
-        r"\(?\b\d{4}\)?\s*\(?\d+\)?\s*SCC\s*\d+\b",
+    INLINE_CITATION_PATTERN = r"\[(\d+)\]"  # example: [1], [2]
 
-        # AIR format: AIR 2020 SC 1234
-        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+\d+\b",
+    def __init__(self, min_citations_required: int = 1):
+        self.min_citations_required = min_citations_required
+        self.inline_citation_regex = re.compile(self.INLINE_CITATION_PATTERN)
 
-        # MANU format: MANU/SC/1234/2020
-        r"\bMANU/[A-Z]{2,}/\d{3,4}/\d{4}\b",
-
-        # Criminal Appeal No. 123 of 2020
-        r"\b(?:Criminal|Civil)\s+Appeal\s+No\.?\s*\d+\s+of\s+\d{4}\b",
-
-        # Writ Petition (C) No. 1234/2021
-        r"\bWrit\s+Petition\s*\(.*?\)\s*No\.?\s*\d+\/\d{4}\b",
-    ]
-
-    # Suspicious citation patterns (heuristic)
-    SUSPICIOUS_PATTERNS = [
-        r"\bMANU/[A-Z]{2,}/0000/\d{4}\b",      # MANU/SC/0000/2023 suspicious
-        r"\b\d{4}\s*\(\d+\)\s*SCC\s*0\b",      # SCC 0 invalid
-        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+0\b",    # AIR 2020 SC 0 invalid
-    ]
-
-    def __init__(self):
-        self._citation_regex = re.compile("|".join(self.CITATION_PATTERNS), re.IGNORECASE)
-        self._suspicious_regex = re.compile("|".join(self.SUSPICIOUS_PATTERNS), re.IGNORECASE)
-
-    def validate(self, text: str) -> dict[str, Any]:
+    # -------------------------------------------------------------------------
+    # Main Entry
+    # -------------------------------------------------------------------------
+    def validate(self, output: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Validate citations in a given text.
+        Validates citations in agent output.
 
-        Returns consistent contract:
+        Expected output dict may contain:
+        - answer / final_answer / response_text
+        - citations: list[dict]
+        - sources: list[dict]
+        - references: list[dict]
+
+        Returns standardized dict:
         {
             "passed": bool,
-            "citation_count": int,
-            "citations_found": list[str],
-            "suspicious_citations": list[str],
-            "message": str
+            "total_citations": int,
+            "inline_citation_count": int,
+            "issues": [...],
+            "notes": [...]
         }
         """
-        if not text or not text.strip():
-            result = CitationValidationResult(
-                passed=False,
-                citation_count=0,
-                citations_found=[],
-                suspicious_citations=[],
-                message="Empty text provided for citation validation.",
+        if not isinstance(output, dict):
+            return {
+                "passed": False,
+                "total_citations": 0,
+                "inline_citation_count": 0,
+                "issues": [
+                    {
+                        "issue_type": "INVALID_OUTPUT_TYPE",
+                        "message": f"Expected dict output but got {type(output)}",
+                        "evidence": None,
+                    }
+                ],
+                "notes": [],
+            }
+
+        answer_text = self._extract_text(output)
+        citations = self._extract_citations(output)
+
+        issues: List[CitationIssue] = []
+        notes: List[str] = []
+
+        # ---------------------------------------------------------------------
+        # Validate citations list existence
+        # ---------------------------------------------------------------------
+        if not citations:
+            issues.append(
+                CitationIssue(
+                    issue_type="NO_CITATIONS",
+                    message="No citations were found in output.",
+                    evidence=None,
+                )
             )
-            return asdict(result)
 
-        citations_found = list(set(self._citation_regex.findall(text)))
-        suspicious_found = list(set(self._suspicious_regex.findall(text)))
+        # ---------------------------------------------------------------------
+        # Validate minimum citations
+        # ---------------------------------------------------------------------
+        if len(citations) < self.min_citations_required:
+            issues.append(
+                CitationIssue(
+                    issue_type="INSUFFICIENT_CITATIONS",
+                    message=f"Expected at least {self.min_citations_required} citations, found {len(citations)}.",
+                    evidence=None,
+                )
+            )
 
-        # Normalize output because regex findall can return tuples sometimes
-        citations_found = self._normalize_matches(citations_found)
-        suspicious_found = self._normalize_matches(suspicious_found)
+        # ---------------------------------------------------------------------
+        # Validate citation fields
+        # ---------------------------------------------------------------------
+        for idx, c in enumerate(citations, start=1):
+            if not isinstance(c, dict):
+                issues.append(
+                    CitationIssue(
+                        issue_type="INVALID_CITATION_FORMAT",
+                        message=f"Citation at position {idx} is not a dict.",
+                        evidence=str(c),
+                    )
+                )
+                continue
 
-        citation_count = len(citations_found)
+            title = c.get("title") or c.get("name")
+            url = c.get("url") or c.get("link")
+            source = c.get("source")
 
-        # Decision Logic
-        if citation_count == 0:
-            passed = False
-            message = "No legal citations detected in the text."
-        elif suspicious_found:
-            passed = False
-            message = "Suspicious citations detected. Validation failed."
-        else:
-            passed = True
-            message = "Citations detected and appear structurally valid."
+            if not title:
+                issues.append(
+                    CitationIssue(
+                        issue_type="MISSING_TITLE",
+                        message=f"Citation #{idx} missing title/name.",
+                        evidence=str(c),
+                    )
+                )
 
-        result = CitationValidationResult(
-            passed=passed,
-            citation_count=citation_count,
-            citations_found=sorted(citations_found),
-            suspicious_citations=sorted(suspicious_found),
-            message=message,
+            if not url:
+                issues.append(
+                    CitationIssue(
+                        issue_type="MISSING_URL",
+                        message=f"Citation #{idx} missing url/link.",
+                        evidence=str(c),
+                    )
+                )
+
+            if url and not self._is_valid_url(url):
+                issues.append(
+                    CitationIssue(
+                        issue_type="INVALID_URL",
+                        message=f"Citation #{idx} contains invalid URL.",
+                        evidence=str(url),
+                    )
+                )
+
+            if not source:
+                notes.append(f"Citation #{idx} has no explicit source field (optional).")
+
+        # ---------------------------------------------------------------------
+        # Inline citation check
+        # ---------------------------------------------------------------------
+        inline_refs = self._extract_inline_references(answer_text)
+        inline_count = len(inline_refs)
+
+        if answer_text.strip():
+            if inline_count == 0 and citations:
+                issues.append(
+                    CitationIssue(
+                        issue_type="MISSING_INLINE_REFERENCES",
+                        message="Citations exist but no inline references like [1], [2] found in answer text.",
+                        evidence=answer_text[:400],
+                    )
+                )
+
+            # check that inline citations do not exceed citation list size
+            max_inline = max(inline_refs) if inline_refs else 0
+            if max_inline > len(citations):
+                issues.append(
+                    CitationIssue(
+                        issue_type="INLINE_REFERENCE_OUT_OF_RANGE",
+                        message=f"Inline reference [${max_inline}] exists but only {len(citations)} citations provided.",
+                        evidence=answer_text[:400],
+                    )
+                )
+
+        # ---------------------------------------------------------------------
+        # Build result
+        # ---------------------------------------------------------------------
+        passed = len(issues) == 0
+
+        return {
+            "passed": passed,
+            "total_citations": len(citations),
+            "inline_citation_count": inline_count,
+            "issues": [i.to_dict() for i in issues],
+            "notes": notes,
+        }
+
+    # -------------------------------------------------------------------------
+    # Extract Helpers
+    # -------------------------------------------------------------------------
+    def _extract_text(self, output: Dict[str, Any]) -> str:
+        """
+        Extract response text from output dict.
+        """
+        text = (
+            output.get("final_answer")
+            or output.get("answer")
+            or output.get("response_text")
+            or output.get("text")
+            or ""
         )
 
-        return asdict(result)
+        if not isinstance(text, str):
+            return ""
 
-    def _normalize_matches(self, matches: list[Any]) -> list[str]:
-        """
-        Regex findall may return:
-        - list[str]
-        - list[tuple[str, ...]]
+        return text.strip()
 
-        Normalize into clean list[str].
+    def _extract_citations(self, output: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        normalized: list[str] = []
+        Extract citations from output dict.
+        Supports multiple keys to reduce coupling with agent outputs.
+        """
+        candidates = (
+            output.get("citations")
+            or output.get("sources")
+            or output.get("references")
+            or []
+        )
+
+        if not isinstance(candidates, list):
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for item in candidates:
+            if isinstance(item, dict):
+                normalized.append(item)
+            else:
+                # attempt best-effort conversion
+                normalized.append({"raw": str(item)})
+
+        return normalized
+
+    def _extract_inline_references(self, text: str) -> List[int]:
+        """
+        Extracts inline citation markers like [1], [2].
+        Returns list of ints.
+        """
+        if not text:
+            return []
+
+        matches = self.inline_citation_regex.findall(text)
+        results: List[int] = []
 
         for m in matches:
-            if isinstance(m, tuple):
-                # pick the first non-empty entry
-                chosen = next((x for x in m if x), "")
-                if chosen:
-                    normalized.append(chosen.strip())
-            elif isinstance(m, str):
-                if m.strip():
-                    normalized.append(m.strip())
+            try:
+                results.append(int(m))
+            except Exception:
+                continue
 
-        return list(set(normalized))
+        return results
+
+    # -------------------------------------------------------------------------
+    # URL Validation
+    # -------------------------------------------------------------------------
+    def _is_valid_url(self, url: str) -> bool:
+        """
+        Minimal URL validation.
+        """
+        if not url or not isinstance(url, str):
+            return False
+
+        url = url.strip()
+
+        if url.startswith("http://") or url.startswith("https://"):
+            return True
+
+        return False
