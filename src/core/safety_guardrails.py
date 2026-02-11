@@ -20,285 +20,300 @@ Author: Vidhi Development Team
 License: MIT (Educational & Research Use Only)
 """
 
-# src/core/safety_guardrails.py
-
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+from src.core.config import CONFIG
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+# -----------------------------
+# Data Models
+# -----------------------------
+@dataclass
+class GuardrailViolation:
+    category: str
+    severity: str  # LOW | MEDIUM | HIGH | CRITICAL
+    message: str
+    evidence: Optional[str] = None
 
 
 @dataclass
-class SafetyCheckResult:
+class GuardrailResult:
+    allowed: bool
+    violations: List[GuardrailViolation]
+    redacted_text: Optional[str] = None
+
+
+# -----------------------------
+# Guardrail Categories
+# -----------------------------
+DISALLOWED_CATEGORIES = {
+    "violence_instructions",
+    "self_harm_instructions",
+    "illegal_activity",
+    "hate_speech",
+    "sexual_content_minor",
+    "explicit_sexual_content",
+}
+
+
+# -----------------------------
+# Regex Patterns
+# -----------------------------
+_EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_PHONE_REGEX = re.compile(r"\b(\+?\d{1,3}[-.\s]?)?\d{10}\b")
+_AADHAAR_REGEX = re.compile(r"\b\d{4}\s?\d{4}\s?\d{4}\b")
+_PAN_REGEX = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]{1}\b")
+_CREDIT_CARD_REGEX = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
+
+
+# -----------------------------
+# Utility Functions
+# -----------------------------
+def _redact_sensitive_data(text: str) -> Tuple[str, List[GuardrailViolation]]:
     """
-    Standardized output structure for safety checks.
-
-    is_safe:
-        True  -> content allowed
-        False -> blocked
-
-    violations:
-        list of detected violation categories
-
-    warnings:
-        non-blocking safety concerns
-
-    disclaimer_required:
-        True if disclaimer must be attached to output
+    Redacts common sensitive information patterns.
+    Returns redacted text + violations list.
     """
+    violations: List[GuardrailViolation] = []
+    redacted = text
 
-    is_safe: bool
-    violations: list[dict[str, Any]] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    disclaimer_required: bool = False
-    disclaimer_text: str = ""
+    def _apply(pattern: re.Pattern, label: str, replacement: str) -> None:
+        nonlocal redacted, violations
+        matches = list(pattern.finditer(redacted))
+        if matches:
+            violations.append(
+                GuardrailViolation(
+                    category="sensitive_data",
+                    severity="MEDIUM",
+                    message=f"Sensitive data detected: {label}",
+                    evidence=matches[0].group(0),
+                )
+            )
+            redacted = pattern.sub(replacement, redacted)
+
+    _apply(_EMAIL_REGEX, "Email Address", "[REDACTED_EMAIL]")
+    _apply(_PHONE_REGEX, "Phone Number", "[REDACTED_PHONE]")
+    _apply(_AADHAAR_REGEX, "Aadhaar Number", "[REDACTED_AADHAAR]")
+    _apply(_PAN_REGEX, "PAN Number", "[REDACTED_PAN]")
+    _apply(_CREDIT_CARD_REGEX, "Credit Card Number", "[REDACTED_CARD]")
+
+    return redacted, violations
 
 
+def _detect_disallowed_content(text: str) -> List[GuardrailViolation]:
+    """
+    Lightweight disallowed content detection.
+    This is heuristic-based (keyword patterns).
+    """
+    violations: List[GuardrailViolation] = []
+    lower = text.lower()
+
+    # Violence / weapon building
+    if any(x in lower for x in ["how to make a bomb", "build a bomb", "pipe bomb", "homemade explosive"]):
+        violations.append(
+            GuardrailViolation(
+                category="violence_instructions",
+                severity="CRITICAL",
+                message="Detected instructions for making explosives.",
+            )
+        )
+
+    # Self-harm instructions
+    if any(x in lower for x in ["how to kill myself", "suicide method", "best way to die", "how to hang myself"]):
+        violations.append(
+            GuardrailViolation(
+                category="self_harm_instructions",
+                severity="CRITICAL",
+                message="Detected self-harm instructions.",
+            )
+        )
+
+    # Illegal hacking
+    if any(x in lower for x in ["hack into", "steal password", "bypass authentication", "ddos attack"]):
+        violations.append(
+            GuardrailViolation(
+                category="illegal_activity",
+                severity="HIGH",
+                message="Detected possible hacking / illegal activity instructions.",
+            )
+        )
+
+    # Hate speech (basic heuristic)
+    if any(x in lower for x in ["kill all", "exterminate", "gas the", "racial superiority"]):
+        violations.append(
+            GuardrailViolation(
+                category="hate_speech",
+                severity="HIGH",
+                message="Detected possible hate speech / extremist phrasing.",
+            )
+        )
+
+    # Sexual content involving minors
+    if "minor" in lower and any(x in lower for x in ["sexual", "nude", "explicit", "porn"]):
+        violations.append(
+            GuardrailViolation(
+                category="sexual_content_minor",
+                severity="CRITICAL",
+                message="Detected sexual content involving minors.",
+            )
+        )
+
+    return violations
+
+
+# -----------------------------
+# Public API
+# -----------------------------
 class SafetyGuardrails:
     """
-    Safety Guardrails for Vidhi System.
+    Central safety guardrail engine.
 
-    Responsibilities:
-    - Block illegal / unsafe legal advice generation requests
-    - Detect restricted content categories
-    - Provide standardized output for orchestrator and compliance agents
-
-    This module is rule-based and intentionally deterministic.
+    This is designed to be used in orchestrator:
+      - pre_agent_check(user_input)
+      - post_agent_check(agent_output)
+      - sanitize_final_answer(final_answer)
     """
 
-    DEFAULT_DISCLAIMER = (
-        "Disclaimer: This output is generated for informational purposes only "
-        "and does not constitute legal advice. Please consult a qualified lawyer."
-    )
+    def __init__(self) -> None:
+        self.enabled = CONFIG.ENABLE_SAFETY_GUARDRAILS
 
-    # Restricted categories
-    CATEGORY_SELF_HARM = "SELF_HARM"
-    CATEGORY_ILLEGAL_ACTIVITY = "ILLEGAL_ACTIVITY"
-    CATEGORY_VIOLENCE = "VIOLENCE"
-    CATEGORY_HATE = "HATE"
-    CATEGORY_FRAUD = "FRAUD"
-    CATEGORY_EXPLOITATION = "EXPLOITATION"
-    CATEGORY_PRIVACY = "PRIVACY"
-
-    # Patterns for detection
-    ILLEGAL_ACTIVITY_PATTERNS = [
-        r"\bhow to hack\b",
-        r"\bhow to bypass\b",
-        r"\bforge documents\b",
-        r"\bfake documents\b",
-        r"\bbribe\b",
-        r"\bblackmail\b",
-        r"\bsteal\b",
-        r"\bscam\b",
-        r"\bcredit card fraud\b",
-        r"\bidentity theft\b",
-        r"\bavoid tax\b",
-        r"\btax evasion\b",
-    ]
-
-    SELF_HARM_PATTERNS = [
-        r"\bsuicide\b",
-        r"\bkill myself\b",
-        r"\bself harm\b",
-        r"\bend my life\b",
-    ]
-
-    VIOLENCE_PATTERNS = [
-        r"\bkill\b",
-        r"\bmurder\b",
-        r"\bassault\b",
-        r"\bshoot\b",
-        r"\bstab\b",
-        r"\bviolence\b",
-    ]
-
-    HATE_PATTERNS = [
-        r"\bkill all\b",
-        r"\bexterminate\b",
-        r"\bracial superiority\b",
-    ]
-
-    PRIVACY_PATTERNS = [
-        r"\baddress of\b",
-        r"\bphone number of\b",
-        r"\bemail of\b",
-        r"\bdox\b",
-        r"\bdoxx\b",
-        r"\bpersonal details\b",
-    ]
-
-    def __init__(self):
-        self._illegal_regex = re.compile("|".join(self.ILLEGAL_ACTIVITY_PATTERNS), re.IGNORECASE)
-        self._self_harm_regex = re.compile("|".join(self.SELF_HARM_PATTERNS), re.IGNORECASE)
-        self._violence_regex = re.compile("|".join(self.VIOLENCE_PATTERNS), re.IGNORECASE)
-        self._hate_regex = re.compile("|".join(self.HATE_PATTERNS), re.IGNORECASE)
-        self._privacy_regex = re.compile("|".join(self.PRIVACY_PATTERNS), re.IGNORECASE)
-
-    # -------------------------------------------------------------------------
-    # Core Validator
-    # -------------------------------------------------------------------------
-    def validate_output(
-        self,
-        content: str,
-        output_type: str = "general",
-        context: Optional[dict[str, Any]] = None,
-    ) -> SafetyCheckResult:
+    def pre_agent_check(self, user_query: str) -> GuardrailResult:
         """
-        Primary safety validation function.
-
-        Args:
-            content: text content to validate
-            output_type: type of output requested (draft/analysis/etc.)
-            context: optional metadata such as jurisdiction, document_type, etc.
-
-        Returns:
-            SafetyCheckResult
+        Runs guardrails before any agent is executed.
         """
-        if not content or not content.strip():
-            return SafetyCheckResult(
-                is_safe=False,
-                violations=[{"category": "EMPTY_INPUT", "message": "No content provided"}],
-                warnings=[],
-                disclaimer_required=True,
-                disclaimer_text=self.DEFAULT_DISCLAIMER,
-            )
+        if not self.enabled:
+            return GuardrailResult(allowed=True, violations=[])
 
-        violations: list[dict[str, Any]] = []
-        warnings: list[str] = []
+        violations: List[GuardrailViolation] = []
 
-        text = content.strip()
+        # Detect disallowed content
+        if CONFIG.BLOCK_DISALLOWED_CONTENT:
+            violations.extend(_detect_disallowed_content(user_query))
 
-        # ------------------------------------------------------------
-        # Detect illegal activity guidance requests
-        # ------------------------------------------------------------
-        if self._illegal_regex.search(text):
-            violations.append(
-                {
-                    "category": self.CATEGORY_ILLEGAL_ACTIVITY,
-                    "message": "Illegal activity guidance detected.",
-                }
-            )
+        # Redact sensitive data
+        redacted_text = user_query
+        if CONFIG.REDACT_SENSITIVE_DATA:
+            redacted_text, redaction_violations = _redact_sensitive_data(user_query)
+            violations.extend(redaction_violations)
 
-        # ------------------------------------------------------------
-        # Detect self harm content
-        # ------------------------------------------------------------
-        if self._self_harm_regex.search(text):
-            violations.append(
-                {
-                    "category": self.CATEGORY_SELF_HARM,
-                    "message": "Self-harm related content detected.",
-                }
-            )
+        allowed = not any(v.severity in ("HIGH", "CRITICAL") for v in violations)
 
-        # ------------------------------------------------------------
-        # Detect violence
-        # ------------------------------------------------------------
-        if self._violence_regex.search(text):
-            violations.append(
-                {
-                    "category": self.CATEGORY_VIOLENCE,
-                    "message": "Violence-related content detected.",
-                }
-            )
-
-        # ------------------------------------------------------------
-        # Detect hate content
-        # ------------------------------------------------------------
-        if self._hate_regex.search(text):
-            violations.append(
-                {
-                    "category": self.CATEGORY_HATE,
-                    "message": "Hate-related content detected.",
-                }
-            )
-
-        # ------------------------------------------------------------
-        # Detect privacy invasion requests
-        # ------------------------------------------------------------
-        if self._privacy_regex.search(text):
-            violations.append(
-                {
-                    "category": self.CATEGORY_PRIVACY,
-                    "message": "Privacy invasion / personal data request detected.",
-                }
-            )
-
-        # ------------------------------------------------------------
-        # Legal Advice disclaimer rules
-        # ------------------------------------------------------------
-        disclaimer_required = False
-        disclaimer_text = ""
-
-        if output_type.lower() in {"legal", "draft", "petition", "complaint", "agreement"}:
-            disclaimer_required = True
-            disclaimer_text = self.DEFAULT_DISCLAIMER
-
-        # If violations exist -> always disclaimer
-        if violations:
-            disclaimer_required = True
-            if not disclaimer_text:
-                disclaimer_text = self.DEFAULT_DISCLAIMER
-
-        is_safe = len(violations) == 0
-
-        if not is_safe:
-            warnings.append("Unsafe content detected. Output generation should be blocked.")
-
-        return SafetyCheckResult(
-            is_safe=is_safe,
+        return GuardrailResult(
+            allowed=allowed,
             violations=violations,
-            warnings=warnings,
-            disclaimer_required=disclaimer_required,
-            disclaimer_text=disclaimer_text or self.DEFAULT_DISCLAIMER,
+            redacted_text=redacted_text,
         )
 
-    # -------------------------------------------------------------------------
-    # Adapter Method (Required by Compliance Agent)
-    # -------------------------------------------------------------------------
-    def evaluate(self, user_input: str, jurisdiction: str = "", document_type: str = "") -> dict[str, Any]:
+    def post_agent_check(self, agent_name: str, agent_output: Any) -> GuardrailResult:
         """
-        Adapter method required by CCAComplianceCheckAgent.
-
-        Returns dict format:
-        {
-            "allowed": bool,
-            "flagged_categories": list[str],
-            "message": str,
-            "disclaimer_required": bool,
-            "disclaimer_text": str
-        }
+        Runs guardrails on agent output to ensure agent didn't generate disallowed content.
         """
-        context = {
-            "jurisdiction": jurisdiction,
-            "document_type": document_type,
-        }
+        if not self.enabled:
+            return GuardrailResult(allowed=True, violations=[])
 
-        result = self.validate_output(
-            content=user_input,
-            output_type=document_type or "general",
-            context=context,
+        text = str(agent_output) if agent_output is not None else ""
+        violations: List[GuardrailViolation] = []
+
+        if CONFIG.BLOCK_DISALLOWED_CONTENT:
+            violations.extend(_detect_disallowed_content(text))
+
+        redacted_text = text
+        if CONFIG.REDACT_SENSITIVE_DATA:
+            redacted_text, redaction_violations = _redact_sensitive_data(text)
+            violations.extend(redaction_violations)
+
+        allowed = not any(v.severity in ("HIGH", "CRITICAL") for v in violations)
+
+        if not allowed:
+            logger.warning(
+                f"Safety violation detected in agent output. Agent={agent_name}, "
+                f"Violations={[v.category for v in violations]}"
+            )
+
+        return GuardrailResult(
+            allowed=allowed,
+            violations=violations,
+            redacted_text=redacted_text,
         )
 
-        flagged_categories: list[str] = []
-        for v in result.violations:
-            cat = v.get("category")
-            if cat:
-                flagged_categories.append(str(cat))
+    def sanitize_final_answer(self, answer: str) -> GuardrailResult:
+        """
+        Final pass safety filter on final response.
+        """
+        if not self.enabled:
+            return GuardrailResult(allowed=True, violations=[], redacted_text=answer)
 
-        flagged_categories = sorted(set(flagged_categories))
+        violations: List[GuardrailViolation] = []
 
-        message = "Content passed compliance checks."
-        if not result.is_safe:
-            message = "Content blocked due to safety violations."
+        if CONFIG.BLOCK_DISALLOWED_CONTENT:
+            violations.extend(_detect_disallowed_content(answer))
 
-        if result.warnings:
-            message += " " + " ".join(result.warnings)
+        redacted_text = answer
+        if CONFIG.REDACT_SENSITIVE_DATA:
+            redacted_text, redaction_violations = _redact_sensitive_data(answer)
+            violations.extend(redaction_violations)
 
-        return {
-            "allowed": bool(result.is_safe),
-            "flagged_categories": flagged_categories,
-            "message": message.strip(),
-            "disclaimer_required": bool(result.disclaimer_required),
-            "disclaimer_text": result.disclaimer_text or self.DEFAULT_DISCLAIMER,
-        }
+        allowed = not any(v.severity in ("HIGH", "CRITICAL") for v in violations)
+
+        return GuardrailResult(
+            allowed=allowed,
+            violations=violations,
+            redacted_text=redacted_text,
+        )
+
+
+# Singleton guardrail engine
+GUARDRAILS = SafetyGuardrails()
+
+
+# -----------------------------
+# Convenience Functions
+# -----------------------------
+def enforce_pre_check(user_query: str) -> str:
+    """
+    Convenience wrapper used by orchestrator.
+    Returns safe user query (redacted if needed).
+    Raises ValueError if disallowed.
+    """
+    result = GUARDRAILS.pre_agent_check(user_query)
+    if not result.allowed:
+        raise ValueError(
+            "User query violates safety guardrails: "
+            + "; ".join([f"{v.category}:{v.message}" for v in result.violations])
+        )
+    return result.redacted_text or user_query
+
+
+def enforce_post_check(agent_name: str, agent_output: Any) -> str:
+    """
+    Convenience wrapper used by orchestrator.
+    Returns safe agent output (redacted if needed).
+    Raises ValueError if disallowed.
+    """
+    result = GUARDRAILS.post_agent_check(agent_name, agent_output)
+    if not result.allowed:
+        raise ValueError(
+            f"Agent output violates safety guardrails: "
+            + "; ".join([f"{v.category}:{v.message}" for v in result.violations])
+        )
+    return result.redacted_text or str(agent_output)
+
+
+def enforce_final_answer(answer: str) -> str:
+    """
+    Final answer enforcement.
+    """
+    result = GUARDRAILS.sanitize_final_answer(answer)
+    if not result.allowed:
+        raise ValueError(
+            "Final answer violates safety guardrails: "
+            + "; ".join([f"{v.category}:{v.message}" for v in result.violations])
+        )
+    return result.redacted_text or answer
