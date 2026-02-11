@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
 class VidhiError(Exception):
     """
-    Base exception class for the Vidhi application.
+    Base exception for the Vidhi application.
     All custom exceptions should inherit from this.
     """
 
@@ -15,116 +16,152 @@ class VidhiError(Exception):
         self,
         message: str,
         *,
-        error_code: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ):
+        error_code: str = "VIDHI_ERROR",
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.error_code = error_code
-        self.metadata = metadata or {}
+        self.details = details or {}
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Dict[str, Any]:
         return {
-            "error": self.__class__.__name__,
-            "message": self.message,
+            "error": True,
             "error_code": self.error_code,
-            "metadata": self.metadata,
+            "message": self.message,
+            "details": self.details,
         }
 
 
+# -----------------------------
+# Config / Setup Errors
+# -----------------------------
 class ConfigError(VidhiError):
-    """Raised when configuration is missing or invalid."""
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, error_code="CONFIG_ERROR", details=details)
 
 
-class AgentExecutionError(VidhiError):
+# -----------------------------
+# Agent Errors
+# -----------------------------
+class AgentError(VidhiError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        agent_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if details is None:
+            details = {}
+        if agent_name:
+            details["agent_name"] = agent_name
+
+        super().__init__(message, error_code="AGENT_ERROR", details=details)
+
+
+class AgentExecutionError(AgentError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        agent_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(message, agent_name=agent_name, details=details)
+        self.error_code = "AGENT_EXECUTION_ERROR"
+
+
+class AgentContractError(AgentError):
     """
-    Raised when an agent fails to execute successfully.
-    Useful for orchestration layer to capture agent-specific failures.
+    Raised when an agent returns output that violates the contract,
+    e.g. not returning a dict, missing keys, wrong types, etc.
     """
 
     def __init__(
         self,
-        agent_name: str,
         message: str,
         *,
-        error_code: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        original_exception: Optional[Exception] = None,
-    ):
-        super().__init__(
-            message=message,
-            error_code=error_code or "AGENT_EXECUTION_FAILED",
-            metadata=metadata,
-        )
-        self.agent_name = agent_name
-        self.original_exception = original_exception
-
-    def to_dict(self) -> dict[str, Any]:
-        data = super().to_dict()
-        data["agent_name"] = self.agent_name
-        if self.original_exception:
-            data["original_exception"] = str(self.original_exception)
-        return data
+        agent_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(message, agent_name=agent_name, details=details)
+        self.error_code = "AGENT_CONTRACT_ERROR"
 
 
+# -----------------------------
+# Validation Errors
+# -----------------------------
 class ValidationError(VidhiError):
-    """Raised when validation of an agent output or pipeline step fails."""
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, error_code="VALIDATION_ERROR", details=details)
 
 
 class CitationValidationError(ValidationError):
-    """Raised when citation validation fails."""
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, details=details)
+        self.error_code = "CITATION_VALIDATION_ERROR"
 
 
-class HallucinationDetectedError(ValidationError):
-    """Raised when hallucination detector identifies high-risk hallucination."""
+class HallucinationValidationError(ValidationError):
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, details=details)
+        self.error_code = "HALLUCINATION_VALIDATION_ERROR"
 
 
-class SafetyGuardrailViolationError(VidhiError):
-    """
-    Raised when the safety guardrails block a request or output.
-    """
+# -----------------------------
+# Orchestrator Errors
+# -----------------------------
+class OrchestratorError(VidhiError):
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, error_code="ORCHESTRATOR_ERROR", details=details)
 
+
+class OrchestratorTimeoutError(OrchestratorError):
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, details=details)
+        self.error_code = "ORCHESTRATOR_TIMEOUT_ERROR"
+
+
+class OrchestratorGuardrailError(OrchestratorError):
+    def __init__(self, message: str, *, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message, details=details)
+        self.error_code = "ORCHESTRATOR_GUARDRAIL_ERROR"
+
+
+# -----------------------------
+# External / Dependency Errors
+# -----------------------------
+class ExternalServiceError(VidhiError):
     def __init__(
         self,
         message: str,
         *,
-        violation_type: str = "UNKNOWN",
-        error_code: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ):
-        super().__init__(
-            message=message,
-            error_code=error_code or "SAFETY_GUARDRAIL_VIOLATION",
-            metadata=metadata,
-        )
-        self.violation_type = violation_type
+        service_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if details is None:
+            details = {}
+        if service_name:
+            details["service_name"] = service_name
 
-    def to_dict(self) -> dict[str, Any]:
-        data = super().to_dict()
-        data["violation_type"] = self.violation_type
-        return data
+        super().__init__(message, error_code="EXTERNAL_SERVICE_ERROR", details=details)
 
 
-class PipelineError(VidhiError):
+# -----------------------------
+# Utility
+# -----------------------------
+def safe_exception_dict(ex: Exception) -> Dict[str, Any]:
     """
-    Raised when the orchestrator fails in a non-agent specific manner.
-    Example: missing pipeline step, broken state, corrupted output.
+    Converts exceptions into a consistent dict output for API responses.
+    Ensures that unknown exceptions don't crash serialization.
     """
+    if isinstance(ex, VidhiError):
+        return ex.to_dict()
 
-
-class ExternalServiceError(VidhiError):
-    """
-    Raised when external dependencies fail (OpenAI API, ChromaDB, filesystem, etc.)
-    """
-
-
-class DataNotFoundError(VidhiError):
-    """Raised when expected case law / statute / document data is missing."""
-
-
-class UnsupportedJurisdictionError(VidhiError):
-    """Raised when user requests a jurisdiction not supported by the system."""
-
-
-class UnsupportedDocumentTypeError(VidhiError):
-    """Raised when user requests a document type not supported by the system."""
+    return {
+        "error": True,
+        "error_code": "UNKNOWN_ERROR",
+        "message": str(ex),
+        "details": {},
+    }
