@@ -8,147 +8,157 @@ Responsibilities:
 - ALWAYS require human (lawyer) review before use
 """
 
-from typing import Dict, Any, List
-from pathlib import Path
+from __future__ import annotations
 
-from src.agents.base_agent import BaseAgent, AgentResultStatus
+from typing import Any
 
-
-TEMPLATE_DIR = Path("src/prompts/templates")
+from src.agents.base_agent import BaseAgent
 
 
-class DocumentGenerationAgent(BaseAgent):
+class DGADocumentGenerationAgent(BaseAgent):
     """
-    DGA – Document Generation Agent (DocComposer)
+    DGA - Document Generation Agent
+
+    Responsibility:
+    - Generate final legal draft based on structured pipeline outputs.
+    - Must be deterministic and safe.
+    - Must include disclaimer when required.
+
+    Output contract:
+    {
+        "draft_text": str,
+        "format": str,
+        "metadata": {...}
+    }
     """
 
-    def __init__(self):
-        super().__init__(
-            name="DGA_DocumentGenerationAgent",
-            requires_human_review=True  # Drafts are never final
-        )
+    agent_name = "DGADocumentGenerationAgent"
+    agent_version = "2.0"
 
-    # ------------------------------------------------------------------
-    # Input Validation
-    # ------------------------------------------------------------------
+    def __init__(self, config: dict[str, Any] | None = None):
+        super().__init__(config=config)
 
-    def validate_input(self, input_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "document_type",
-            "case_facts",
-            "issues",
-            "arguments",
-            "jurisdiction",
-            "court"
-        ]
+    def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        Expected payload:
+        {
+            "request_id": str,
+            "jurisdiction": str,
+            "document_type": str,
+            "case_description": str,
 
-        missing = [f for f in required_fields if f not in input_data]
-        if missing:
-            raise ValueError(f"Missing required input fields: {missing}")
+            "issues": dict (optional),
+            "research": dict (optional),
+            "analysis": dict (optional),
+            "arguments": dict (optional),
 
-        if not isinstance(input_data["case_facts"], str):
-            raise TypeError("case_facts must be a string")
-
-        if not isinstance(input_data["issues"], list):
-            raise TypeError("issues must be a list")
-
-        if not isinstance(input_data["arguments"], list):
-            raise TypeError("arguments must be a list")
-
-    # ------------------------------------------------------------------
-    # Template Loader
-    # ------------------------------------------------------------------
-
-    def _load_template(self, document_type: str) -> str:
-        template_map = {
-            "bail_application": "bail_application_template.md",
-            "legal_notice": "legal_notice_template.md",
-            "civil_suit": "civil_suit_template.md",
-            "writ_petition": "writ_petition_template.md",
-            "affidavit": "affidavit_template.md"
+            "compliance": dict (optional),
+            "disclaimer_text": str (optional),
+            "disclaimer_required": bool (optional)
         }
+        """
+        request_id = str(payload.get("request_id", "")).strip()
+        jurisdiction = str(payload.get("jurisdiction", "")).strip()
+        document_type = str(payload.get("document_type", "Legal Draft")).strip()
+        case_description = str(payload.get("case_description", "")).strip()
 
-        template_name = template_map.get(document_type.lower())
-        if not template_name:
-            raise ValueError(f"Unsupported document_type: {document_type}")
+        issues = payload.get("issues") or {}
+        research = payload.get("research") or {}
+        analysis = payload.get("analysis") or {}
+        arguments = payload.get("arguments") or {}
 
-        template_path = TEMPLATE_DIR / template_name
+        compliance = payload.get("compliance") or {}
+        disclaimer_required = bool(
+            payload.get("disclaimer_required", compliance.get("disclaimer_required", False))
+        )
+        disclaimer_text = str(
+            payload.get("disclaimer_text", compliance.get("disclaimer_text", ""))
+        ).strip()
 
-        if not template_path.exists():
-            raise FileNotFoundError(f"Template not found: {template_path}")
+        if not disclaimer_text:
+            disclaimer_text = (
+                "Disclaimer: This document is generated for informational purposes only "
+                "and does not constitute legal advice. Please consult a qualified lawyer."
+            )
 
-        return template_path.read_text(encoding="utf-8")
+        # Extract key details safely
+        primary_issues = issues.get("primary_issues", [])
+        if not isinstance(primary_issues, list):
+            primary_issues = []
 
-    # ------------------------------------------------------------------
-    # Core Logic
-    # ------------------------------------------------------------------
+        statutes = research.get("statutes", [])
+        if not isinstance(statutes, list):
+            statutes = []
 
-    def run(self, input_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        document_type = input_data["document_type"]
-        case_facts = input_data["case_facts"]
-        issues = input_data["issues"]
-        arguments = input_data["arguments"]
-        jurisdiction = input_data["jurisdiction"]
-        court = input_data["court"]
+        case_laws = research.get("case_laws", [])
+        if not isinstance(case_laws, list):
+            case_laws = []
 
-        template = self._load_template(document_type)
+        analysis_text = str(analysis.get("analysis_text", "")).strip()
+        arguments_text = str(arguments.get("arguments_text", "")).strip()
 
-        # --- Controlled population (NO free-form generation) ---
-        populated_document = template
+        # Build draft
+        draft_lines: list[str] = []
 
-        populated_document = populated_document.replace(
-            "{{CASE_FACTS}}",
-            case_facts.strip()
+        draft_lines.append(f"DOCUMENT TYPE: {document_type}")
+        if jurisdiction:
+            draft_lines.append(f"JURISDICTION: {jurisdiction}")
+        if request_id:
+            draft_lines.append(f"REQUEST ID: {request_id}")
+
+        draft_lines.append("\n---\n")
+
+        if case_description:
+            draft_lines.append("FACTS / CASE BACKGROUND")
+            draft_lines.append(case_description)
+            draft_lines.append("\n---\n")
+
+        if primary_issues:
+            draft_lines.append("LEGAL ISSUES IDENTIFIED")
+            for idx, issue in enumerate(primary_issues, start=1):
+                draft_lines.append(f"{idx}. {issue}")
+            draft_lines.append("\n---\n")
+
+        if statutes:
+            draft_lines.append("RELEVANT STATUTES / PROVISIONS")
+            for idx, statute in enumerate(statutes, start=1):
+                draft_lines.append(f"{idx}. {statute}")
+            draft_lines.append("\n---\n")
+
+        if case_laws:
+            draft_lines.append("RELEVANT CASE LAWS (UNVERIFIED)")
+            for idx, cl in enumerate(case_laws, start=1):
+                draft_lines.append(f"{idx}. {cl}")
+            draft_lines.append("\n---\n")
+
+        if analysis_text:
+            draft_lines.append("LEGAL ANALYSIS")
+            draft_lines.append(analysis_text)
+            draft_lines.append("\n---\n")
+
+        if arguments_text:
+            draft_lines.append("ARGUMENTS")
+            draft_lines.append(arguments_text)
+            draft_lines.append("\n---\n")
+
+        draft_lines.append("CONCLUSION / NEXT STEPS")
+        draft_lines.append(
+            "Based on the provided facts, the above issues and analysis may be relevant. "
+            "Further review of official case law and statutory provisions is recommended."
         )
 
-        populated_document = populated_document.replace(
-            "{{LEGAL_ISSUES}}",
-            "\n".join(f"- {issue}" for issue in issues)
-        )
+        if disclaimer_required:
+            draft_lines.append("\n---\n")
+            draft_lines.append(disclaimer_text)
 
-        populated_document = populated_document.replace(
-            "{{ARGUMENTS}}",
-            "\n".join(f"- {arg}" for arg in arguments)
-        )
-
-        populated_document = populated_document.replace(
-            "{{JURISDICTION}}",
-            jurisdiction
-        )
-
-        populated_document = populated_document.replace(
-            "{{COURT}}",
-            court
-        )
-
-        # --- Safety Check ---
-        if "{{" in populated_document or "}}" in populated_document:
-            return {
-                "status": AgentResultStatus.UNCERTAIN,
-                "draft_document": populated_document,
-                "reason": "Unresolved placeholders found in template"
-            }
+        draft_text = "\n".join(draft_lines).strip()
 
         return {
-            "status": AgentResultStatus.SUCCESS,
-            "document_type": document_type,
-            "draft_document": populated_document,
-            "note": "This is a draft document and must be reviewed by a qualified lawyer before use."
+            "draft_text": draft_text,
+            "format": "text",
+            "metadata": {
+                "generated_by": self.agent_name,
+                "version": self.agent_version,
+                "document_type": document_type,
+            },
         }
-
-    # ------------------------------------------------------------------
-    # Output Validation
-    # ------------------------------------------------------------------
-
-    def validate_output(self, output_data: Dict[str, Any]) -> None:
-        required_fields = [
-            "status",
-            "draft_document"
-        ]
-
-        missing = [f for f in required_fields if f not in output_data]
-        if missing:
-            raise ValueError(f"Missing required output fields: {missing}")
-
-        if not isinstance(output_data["draft_document"], str):
-            raise TypeError("draft_document must be a string")
