@@ -3,181 +3,151 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
+from dataclasses import dataclass
 from typing import Optional
 
-from dotenv import load_dotenv
+
+def _get_env_str(name: str, default: Optional[str] = None) -> str:
+    val = os.getenv(name, default)
+    if val is None:
+        raise ValueError(f"Missing required environment variable: {name}")
+    return str(val)
 
 
-class ConfigError(Exception):
-    """Raised when mandatory configuration is missing or invalid."""
-
-
-def _get_env(name: str, default: Optional[str] = None) -> Optional[str]:
-    """Fetch environment variable safely."""
-    return os.getenv(name, default)
-
-
-def _require_env(name: str) -> str:
-    """Fetch a mandatory environment variable or raise a ConfigError."""
-    value = os.getenv(name)
-    if value is None or not value.strip():
-        raise ConfigError(f"Missing required environment variable: {name}")
-    return value.strip()
-
-
-def _to_bool(value: Optional[str], default: bool = False) -> bool:
-    """Convert env string to bool."""
-    if value is None:
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
         return default
-    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    raw = raw.strip().lower()
+    return raw in ("1", "true", "yes", "y", "on")
 
 
-def _to_int(value: Optional[str], default: int) -> int:
-    """Convert env string to int."""
-    if value is None or not value.strip():
+def _get_env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
         return default
     try:
-        return int(value.strip())
-    except ValueError:
+        return int(raw.strip())
+    except ValueError as e:
+        raise ValueError(f"Environment variable {name} must be an integer. Got: {raw}") from e
+
+
+def _get_env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    try:
+        return float(raw.strip())
+    except ValueError as e:
+        raise ValueError(f"Environment variable {name} must be a float. Got: {raw}") from e
 
 
+@dataclass(frozen=True)
 class AppConfig:
     """
-    Centralized configuration for Vidhi.
+    Centralized application configuration.
 
-    Loads from environment variables (supports .env file via python-dotenv).
-    Designed for:
-    - Fail-fast validation
-    - Central source of truth
-    - Clean access across modules
+    This config is intentionally strict and explicit because the orchestrator,
+    validators, and agents depend on stable toggles and thresholds.
     """
 
-    def __init__(self) -> None:
-        # Load .env file (safe if missing)
-        load_dotenv(override=False)
+    # ----------------------------
+    # App Metadata
+    # ----------------------------
+    APP_NAME: str = "Vidhi"
+    ENVIRONMENT: str = "dev"  # dev | test | prod
 
-        # -------------------------
-        # Core Environment
-        # -------------------------
-        self.env: str = _get_env("VIDHI_ENV", "dev")
-        self.debug: bool = _to_bool(_get_env("VIDHI_DEBUG"), default=False)
+    # ----------------------------
+    # Logging
+    # ----------------------------
+    LOG_LEVEL: str = "INFO"
 
-        # -------------------------
-        # LLM / OpenAI / Providers
-        # -------------------------
-        self.openai_api_key: Optional[str] = _get_env("OPENAI_API_KEY")
-        self.openai_model: str = _get_env("OPENAI_MODEL", "gpt-4o-mini")
-        self.embedding_model: str = _get_env(
-            "EMBEDDING_MODEL", "text-embedding-3-small"
-        )
+    # ----------------------------
+    # Orchestrator Behavior
+    # ----------------------------
+    ORCHESTRATOR_STRICT_MODE: bool = True
+    ORCHESTRATOR_MAX_AGENTS: int = 10
+    ORCHESTRATOR_MAX_RETRIES: int = 1
+    ORCHESTRATOR_TIMEOUT_SECONDS: int = 120
 
-        # -------------------------
-        # Vectorstore / Chroma
-        # -------------------------
-        self.vectorstore_dir: str = _get_env("VECTORSTORE_DIR", "vectorstore")
-        self.collection_name: str = _get_env("VECTORSTORE_COLLECTION", "vidhi_cases")
+    # ----------------------------
+    # Validation Toggles
+    # ----------------------------
+    ENABLE_CITATION_VALIDATION: bool = True
+    ENABLE_HALLUCINATION_DETECTION: bool = True
 
-        # -------------------------
-        # Logging
-        # -------------------------
-        self.log_dir: str = _get_env("LOG_DIR", "logs")
-        self.log_level: str = _get_env("LOG_LEVEL", "INFO")
+    # ----------------------------
+    # Citation Validation Rules
+    # ----------------------------
+    CITATION_MIN_COUNT: int = 1
+    CITATION_MAX_COUNT: int = 25
+    CITATION_ALLOW_UNCITED_SHORT_ANSWERS: bool = False
+    CITATION_SHORT_ANSWER_THRESHOLD_CHARS: int = 350
 
-        # -------------------------
-        # Pipeline Controls
-        # -------------------------
-        self.enable_citations: bool = _to_bool(
-            _get_env("ENABLE_CITATIONS"), default=True
-        )
-        self.enable_guardrails: bool = _to_bool(
-            _get_env("ENABLE_GUARDRAILS"), default=True
-        )
-        self.enable_hallucination_detection: bool = _to_bool(
-            _get_env("ENABLE_HALLUCINATION_DETECTION"), default=True
-        )
+    # ----------------------------
+    # Hallucination Detection Rules
+    # ----------------------------
+    HALLUCINATION_MAX_RISK_SCORE: float = 0.65
+    HALLUCINATION_FLAG_IF_NO_SOURCES: bool = True
+    HALLUCINATION_REQUIRE_CITATIONS_FOR_FACTS: bool = True
 
-        self.max_context_documents: int = _to_int(
-            _get_env("MAX_CONTEXT_DOCUMENTS"), default=10
-        )
+    # ----------------------------
+    # Safety Guardrails
+    # ----------------------------
+    ENABLE_SAFETY_GUARDRAILS: bool = True
+    BLOCK_DISALLOWED_CONTENT: bool = True
+    REDACT_SENSITIVE_DATA: bool = True
 
-        # -------------------------
-        # Optional Paths
-        # -------------------------
-        self.output_dir: str = _get_env("OUTPUT_DIR", "outputs")
+    # ----------------------------
+    # LLM / Model (optional future use)
+    # ----------------------------
+    MODEL_NAME: str = "gpt-4o-mini"
+    MODEL_TEMPERATURE: float = 0.2
+    MODEL_MAX_TOKENS: int = 2000
 
-        # -------------------------
-        # Validation / Fail-fast
-        # -------------------------
-        self._validate()
-
-    def _validate(self) -> None:
+    @staticmethod
+    def from_env() -> "AppConfig":
         """
-        Validate configuration. This should fail-fast in production.
+        Loads config from environment variables with safe defaults.
         """
 
-        # OPENAI key is required only if you are actually calling OpenAI
-        if self.env.lower() in {"prod", "production"}:
-            if not self.openai_api_key:
-                raise ConfigError(
-                    "OPENAI_API_KEY is required in production environment."
-                )
+        return AppConfig(
+            APP_NAME=_get_env_str("APP_NAME", "Vidhi"),
+            ENVIRONMENT=_get_env_str("ENVIRONMENT", "dev"),
+            LOG_LEVEL=_get_env_str("LOG_LEVEL", "INFO"),
 
-        if not self.openai_model.strip():
-            raise ConfigError("OPENAI_MODEL cannot be empty.")
+            ORCHESTRATOR_STRICT_MODE=_get_env_bool("ORCHESTRATOR_STRICT_MODE", True),
+            ORCHESTRATOR_MAX_AGENTS=_get_env_int("ORCHESTRATOR_MAX_AGENTS", 10),
+            ORCHESTRATOR_MAX_RETRIES=_get_env_int("ORCHESTRATOR_MAX_RETRIES", 1),
+            ORCHESTRATOR_TIMEOUT_SECONDS=_get_env_int("ORCHESTRATOR_TIMEOUT_SECONDS", 120),
 
-        if not self.embedding_model.strip():
-            raise ConfigError("EMBEDDING_MODEL cannot be empty.")
+            ENABLE_CITATION_VALIDATION=_get_env_bool("ENABLE_CITATION_VALIDATION", True),
+            ENABLE_HALLUCINATION_DETECTION=_get_env_bool("ENABLE_HALLUCINATION_DETECTION", True),
 
-        if self.max_context_documents <= 0:
-            raise ConfigError("MAX_CONTEXT_DOCUMENTS must be > 0.")
+            CITATION_MIN_COUNT=_get_env_int("CITATION_MIN_COUNT", 1),
+            CITATION_MAX_COUNT=_get_env_int("CITATION_MAX_COUNT", 25),
+            CITATION_ALLOW_UNCITED_SHORT_ANSWERS=_get_env_bool(
+                "CITATION_ALLOW_UNCITED_SHORT_ANSWERS", False
+            ),
+            CITATION_SHORT_ANSWER_THRESHOLD_CHARS=_get_env_int(
+                "CITATION_SHORT_ANSWER_THRESHOLD_CHARS", 350
+            ),
 
-        if not self.vectorstore_dir.strip():
-            raise ConfigError("VECTORSTORE_DIR cannot be empty.")
+            HALLUCINATION_MAX_RISK_SCORE=_get_env_float("HALLUCINATION_MAX_RISK_SCORE", 0.65),
+            HALLUCINATION_FLAG_IF_NO_SOURCES=_get_env_bool("HALLUCINATION_FLAG_IF_NO_SOURCES", True),
+            HALLUCINATION_REQUIRE_CITATIONS_FOR_FACTS=_get_env_bool(
+                "HALLUCINATION_REQUIRE_CITATIONS_FOR_FACTS", True
+            ),
 
-        if not self.collection_name.strip():
-            raise ConfigError("VECTORSTORE_COLLECTION cannot be empty.")
+            ENABLE_SAFETY_GUARDRAILS=_get_env_bool("ENABLE_SAFETY_GUARDRAILS", True),
+            BLOCK_DISALLOWED_CONTENT=_get_env_bool("BLOCK_DISALLOWED_CONTENT", True),
+            REDACT_SENSITIVE_DATA=_get_env_bool("REDACT_SENSITIVE_DATA", True),
 
-        if not self.log_level.strip():
-            raise ConfigError("LOG_LEVEL cannot be empty.")
-
-    def masked_secrets(self) -> list[str]:
-        """
-        Returns a list of secrets that should be masked in logs.
-        """
-        secrets = []
-        if self.openai_api_key:
-            secrets.append(self.openai_api_key)
-        return secrets
-
-    def as_dict(self) -> dict:
-        """Return config as dict for debugging (secrets not included)."""
-        return {
-            "env": self.env,
-            "debug": self.debug,
-            "openai_model": self.openai_model,
-            "embedding_model": self.embedding_model,
-            "vectorstore_dir": self.vectorstore_dir,
-            "collection_name": self.collection_name,
-            "log_dir": self.log_dir,
-            "log_level": self.log_level,
-            "enable_citations": self.enable_citations,
-            "enable_guardrails": self.enable_guardrails,
-            "enable_hallucination_detection": self.enable_hallucination_detection,
-            "max_context_documents": self.max_context_documents,
-            "output_dir": self.output_dir,
-        }
+            MODEL_NAME=_get_env_str("MODEL_NAME", "gpt-4o-mini"),
+            MODEL_TEMPERATURE=_get_env_float("MODEL_TEMPERATURE", 0.2),
+            MODEL_MAX_TOKENS=_get_env_int("MODEL_MAX_TOKENS", 2000),
+        )
 
 
-@lru_cache(maxsize=1)
-def get_config() -> AppConfig:
-    """
-    Cached config loader.
-    Use this everywhere instead of creating AppConfig repeatedly.
-    """
-    return AppConfig()
-
-
-# Backward-compatible alias (if older code expects `config`)
-config = get_config()
+# Singleton config object used across application
+CONFIG: AppConfig = AppConfig.from_env()
