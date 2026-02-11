@@ -15,8 +15,8 @@ from typing import Any, Optional
 
 from src.common.exceptions import (
     AgentExecutionError,
-    HallucinationDetectedError,
     PipelineError,
+    ValidationError,
 )
 from src.common.schemas import (
     ComplianceCheckOutput,
@@ -37,14 +37,16 @@ logger = get_logger(__name__)
 
 class AgentOrchestrator:
     """
-    Full pipeline orchestrator for Vidhi.
+    Vidhi Pipeline Orchestrator
 
-    Design goals:
-    - Enforce mandatory dependencies (Issue Identification + Research).
-    - Keep agent execution isolated with structured error capture.
-    - Run validation on meaningful natural language content (not dict dumps).
-    - Allow config-driven fail-fast behavior.
-    - Ensure compliance output is enforced before drafting.
+    Improvements included (based on latest review):
+    - Supports agent interface fallback: run() / execute() / invoke() / callable
+    - Strict schema validation: outputs must match expected schema
+    - Fail-fast on mandatory stages
+    - Per-agent execution timing capture
+    - Validation is applied on meaningful text, not dict dumps
+    - Citation + hallucination validation applied on FINAL DRAFT too
+    - Compliance disclaimer enforcement at orchestrator level
     """
 
     def __init__(
@@ -77,17 +79,16 @@ class AgentOrchestrator:
         self.mandatory_agents = mandatory_agents or ["LII", "LRA"]
 
     # -------------------------------------------------------------------------
-    # Public Orchestration API
+    # Public API
     # -------------------------------------------------------------------------
     def run(self, request: PipelineRequest) -> PipelineResponse:
         """
-        Execute full legal pipeline.
+        Execute end-to-end pipeline.
 
         Returns:
-            PipelineResponse containing all intermediate outputs, validations,
-            draft (if generated), errors, and pipeline metadata.
+            PipelineResponse
         """
-        start_ts = time.time()
+        pipeline_start = time.time()
 
         response = PipelineResponse(
             request_id=request.request_id,
@@ -100,18 +101,26 @@ class AgentOrchestrator:
             draft=None,
             validations={},
             errors=[],
-            metadata={},
+            metadata={
+                "execution_time_seconds": None,
+                "agent_timings": {},
+                "draft_generated": False,
+            },
         )
 
         logger.info(
             "Pipeline started",
-            extra={"request_id": request.request_id, "jurisdiction": request.jurisdiction},
+            extra={
+                "request_id": request.request_id,
+                "jurisdiction": request.jurisdiction,
+                "document_type": request.document_type,
+            },
         )
 
-        # ---------------------------
-        # Step 1: Legal Issue Identification (LII)
-        # ---------------------------
-        issues = self._execute_agent(
+        # ---------------------------------------------------------------------
+        # 1. Issue Identification (LII) - Mandatory
+        # ---------------------------------------------------------------------
+        response.issues = self._execute_agent(
             agent_code="LII",
             agent=self.lii_agent,
             request=request,
@@ -125,16 +134,13 @@ class AgentOrchestrator:
             response=response,
         )
 
-        if issues:
-            response.issues = issues
-
         if self._should_stop(response, "LII"):
-            return self._finalize_failure(response, start_ts)
+            return self._finalize(response, pipeline_start)
 
-        # ---------------------------
-        # Step 2: Legal Research Agent (LRA)
-        # ---------------------------
-        research = self._execute_agent(
+        # ---------------------------------------------------------------------
+        # 2. Legal Research (LRA) - Mandatory
+        # ---------------------------------------------------------------------
+        response.research = self._execute_agent(
             agent_code="LRA",
             agent=self.lra_agent,
             request=request,
@@ -142,23 +148,20 @@ class AgentOrchestrator:
                 "case_description": request.case_description,
                 "jurisdiction": request.jurisdiction,
                 "document_type": request.document_type,
-                "issues": asdict(issues) if issues else None,
+                "issues": self._safe_asdict(response.issues),
                 "request_id": request.request_id,
             },
             output_schema=LegalResearchOutput,
             response=response,
         )
 
-        if research:
-            response.research = research
-
         if self._should_stop(response, "LRA"):
-            return self._finalize_failure(response, start_ts)
+            return self._finalize(response, pipeline_start)
 
-        # ---------------------------
-        # Step 3: Legal Analysis Agent (LAF)
-        # ---------------------------
-        analysis = self._execute_agent(
+        # ---------------------------------------------------------------------
+        # 3. Legal Analysis (LAF)
+        # ---------------------------------------------------------------------
+        response.analysis = self._execute_agent(
             agent_code="LAF",
             agent=self.laf_agent,
             request=request,
@@ -166,21 +169,18 @@ class AgentOrchestrator:
                 "case_description": request.case_description,
                 "jurisdiction": request.jurisdiction,
                 "document_type": request.document_type,
-                "issues": asdict(response.issues) if response.issues else None,
-                "research": asdict(response.research) if response.research else None,
+                "issues": self._safe_asdict(response.issues),
+                "research": self._safe_asdict(response.research),
                 "request_id": request.request_id,
             },
             output_schema=LegalAnalysisOutput,
             response=response,
         )
 
-        if analysis:
-            response.analysis = analysis
-
-        # ---------------------------
-        # Step 4: Legal Arguments Builder (LAB)
-        # ---------------------------
-        arguments = self._execute_agent(
+        # ---------------------------------------------------------------------
+        # 4. Arguments Builder (LAB)
+        # ---------------------------------------------------------------------
+        response.arguments = self._execute_agent(
             agent_code="LAB",
             agent=self.lab_agent,
             request=request,
@@ -188,22 +188,19 @@ class AgentOrchestrator:
                 "case_description": request.case_description,
                 "jurisdiction": request.jurisdiction,
                 "document_type": request.document_type,
-                "issues": asdict(response.issues) if response.issues else None,
-                "research": asdict(response.research) if response.research else None,
-                "analysis": asdict(response.analysis) if response.analysis else None,
+                "issues": self._safe_asdict(response.issues),
+                "research": self._safe_asdict(response.research),
+                "analysis": self._safe_asdict(response.analysis),
                 "request_id": request.request_id,
             },
             output_schema=LegalArgumentsOutput,
             response=response,
         )
 
-        if arguments:
-            response.arguments = arguments
-
-        # ---------------------------
-        # Step 5: Compliance & Safety Agent (CLSA)
-        # ---------------------------
-        compliance = self._execute_agent(
+        # ---------------------------------------------------------------------
+        # 5. Compliance Check (CLSA)
+        # ---------------------------------------------------------------------
+        response.compliance = self._execute_agent(
             agent_code="CLSA",
             agent=self.clsa_agent,
             request=request,
@@ -211,85 +208,71 @@ class AgentOrchestrator:
                 "case_description": request.case_description,
                 "jurisdiction": request.jurisdiction,
                 "document_type": request.document_type,
-                "issues": asdict(response.issues) if response.issues else None,
-                "research": asdict(response.research) if response.research else None,
-                "analysis": asdict(response.analysis) if response.analysis else None,
-                "arguments": asdict(response.arguments) if response.arguments else None,
+                "issues": self._safe_asdict(response.issues),
+                "research": self._safe_asdict(response.research),
+                "analysis": self._safe_asdict(response.analysis),
+                "arguments": self._safe_asdict(response.arguments),
                 "request_id": request.request_id,
             },
             output_schema=ComplianceCheckOutput,
             response=response,
         )
 
-        if compliance:
-            response.compliance = compliance
+        # ---------------------------------------------------------------------
+        # 6. Validate intermediate text (citation + hallucination)
+        # ---------------------------------------------------------------------
+        intermediate_text = self._build_validation_text(response)
 
-        # ---------------------------
-        # Step 6: Citation Check Agent (CCA)
-        # ---------------------------
-        citation_validation_text = self._build_validation_text(response)
-        citation_result = self.citation_validator.validate(citation_validation_text)
-
-        response.validations["citation_validation"] = citation_result
-
-        if not citation_result.get("passed", True):
-            response.errors.append(
-                {
-                    "stage": "CITATION_VALIDATION",
-                    "error": "Citation validation failed",
-                    "details": citation_result,
-                }
-            )
-
-        # ---------------------------
-        # Step 7: Hallucination Detection
-        # ---------------------------
-        hallucination_result = self.hallucination_detector.detect(
-            citation_validation_text,
-            context={
-                "jurisdiction": request.jurisdiction,
-                "document_type": request.document_type,
-                "request_id": request.request_id,
-            },
+        response.validations["intermediate_citation_validation"] = (
+            self.citation_validator.validate(intermediate_text)
         )
 
-        response.validations["hallucination_detection"] = asdict(hallucination_result)
+        response.validations["intermediate_hallucination_detection"] = asdict(
+            self.hallucination_detector.detect(
+                intermediate_text,
+                context={
+                    "jurisdiction": request.jurisdiction,
+                    "document_type": request.document_type,
+                    "request_id": request.request_id,
+                },
+            )
+        )
 
-        if hallucination_result.hallucination_risk == "HIGH":
+        # If hallucination HIGH at intermediate stage, block draft generation.
+        if (
+            response.validations["intermediate_hallucination_detection"].get("hallucination_risk")
+            == "HIGH"
+        ):
+            response.status = "FAILED"
             response.errors.append(
                 {
-                    "stage": "HALLUCINATION_DETECTION",
-                    "error": "High hallucination risk detected",
-                    "details": asdict(hallucination_result),
+                    "stage": "HALLUCINATION_GATE",
+                    "error": "High hallucination risk detected in intermediate output. Draft generation blocked.",
+                    "details": response.validations["intermediate_hallucination_detection"],
                 }
             )
+            response.metadata["reason"] = "Hallucination gate blocked draft generation"
+            return self._finalize(response, pipeline_start)
 
-            # This is a hard safety gate: if hallucination is HIGH, do not draft.
+        # ---------------------------------------------------------------------
+        # 7. Compliance Gate Enforcement
+        # ---------------------------------------------------------------------
+        if response.compliance and not response.compliance.can_generate_draft:
             response.status = "FAILED"
-            response.metadata["draft_generated"] = False
-            response.metadata["reason"] = "High hallucination risk - draft generation blocked"
-            return self._finalize(response, start_ts)
-
-        # ---------------------------
-        # Step 8: Enforce Compliance Gate Before Drafting
-        # ---------------------------
-        if compliance and not compliance.can_generate_draft:
-            response.status = "FAILED"
-            response.metadata["draft_generated"] = False
             response.metadata["reason"] = "Compliance agent blocked draft generation"
             response.errors.append(
                 {
                     "stage": "COMPLIANCE_GATE",
-                    "error": "Compliance agent blocked drafting",
-                    "details": asdict(compliance),
+                    "error": "Compliance agent blocked draft generation",
+                    "details": self._safe_asdict(response.compliance),
                 }
             )
-            return self._finalize(response, start_ts)
+            return self._finalize(response, pipeline_start)
 
-        # ---------------------------
-        # Step 9: Document Generation Agent (DGA)
-        # ---------------------------
-        draft = self._execute_agent(
+        # ---------------------------------------------------------------------
+        # 8. Draft Generation (DGA)
+        # ---------------------------------------------------------------------
+        response.draft = self._execute_agent(
             agent_code="DGA",
             agent=self.dga_agent,
             request=request,
@@ -297,26 +280,73 @@ class AgentOrchestrator:
                 "case_description": request.case_description,
                 "jurisdiction": request.jurisdiction,
                 "document_type": request.document_type,
-                "issues": asdict(response.issues) if response.issues else None,
-                "research": asdict(response.research) if response.research else None,
-                "analysis": asdict(response.analysis) if response.analysis else None,
-                "arguments": asdict(response.arguments) if response.arguments else None,
-                "compliance": asdict(response.compliance) if response.compliance else None,
+                "issues": self._safe_asdict(response.issues),
+                "research": self._safe_asdict(response.research),
+                "analysis": self._safe_asdict(response.analysis),
+                "arguments": self._safe_asdict(response.arguments),
+                "compliance": self._safe_asdict(response.compliance),
                 "request_id": request.request_id,
             },
             output_schema=DocumentDraftOutput,
             response=response,
         )
 
-        if draft:
-            response.draft = draft
+        if response.draft:
             response.metadata["draft_generated"] = True
 
-        response.status = "SUCCESS" if not response.errors else "PARTIAL_SUCCESS"
-        return self._finalize(response, start_ts)
+        # ---------------------------------------------------------------------
+        # 9. Enforce compliance disclaimer in orchestrator (hard enforcement)
+        # ---------------------------------------------------------------------
+        if response.draft and response.compliance:
+            response.draft = self._enforce_compliance_disclaimer(response.draft, response.compliance)
+
+        # ---------------------------------------------------------------------
+        # 10. Validate FINAL DRAFT (most important validation)
+        # ---------------------------------------------------------------------
+        if response.draft and response.draft.draft_text.strip():
+            draft_text = response.draft.draft_text.strip()
+
+            response.validations["draft_citation_validation"] = (
+                self.citation_validator.validate(draft_text)
+            )
+
+            response.validations["draft_hallucination_detection"] = asdict(
+                self.hallucination_detector.detect(
+                    draft_text,
+                    context={
+                        "jurisdiction": request.jurisdiction,
+                        "document_type": request.document_type,
+                        "request_id": request.request_id,
+                    },
+                )
+            )
+
+            if response.validations["draft_hallucination_detection"].get("hallucination_risk") == "HIGH":
+                response.errors.append(
+                    {
+                        "stage": "FINAL_DRAFT_HALLUCINATION",
+                        "error": "High hallucination risk detected in final draft.",
+                        "details": response.validations["draft_hallucination_detection"],
+                    }
+                )
+
+                # Block final success status if draft itself is high risk.
+                response.status = "FAILED"
+                response.metadata["reason"] = "Final draft hallucination risk is HIGH"
+                return self._finalize(response, pipeline_start)
+
+        # ---------------------------------------------------------------------
+        # Final Status
+        # ---------------------------------------------------------------------
+        if response.errors:
+            response.status = "PARTIAL_SUCCESS"
+        else:
+            response.status = "SUCCESS"
+
+        return self._finalize(response, pipeline_start)
 
     # -------------------------------------------------------------------------
-    # Internal Helpers
+    # Agent Execution Wrapper
     # -------------------------------------------------------------------------
     def _execute_agent(
         self,
@@ -329,15 +359,21 @@ class AgentOrchestrator:
         response: PipelineResponse,
     ):
         """
-        Execute agent with strong error handling + schema validation.
+        Execute agent with:
+        - interface fallback (run/execute/invoke/callable)
+        - schema enforcement
+        - error capture
+        - timing capture
         """
+        agent_start = time.time()
+
         try:
             logger.info(
                 f"Executing agent {agent_code}",
                 extra={"request_id": request.request_id, "agent": agent_code},
             )
 
-            raw_result = agent.run(payload)
+            raw_result = self._invoke_agent(agent, payload)
 
             if raw_result is None:
                 raise AgentExecutionError(
@@ -345,16 +381,17 @@ class AgentOrchestrator:
                     message=f"{agent_code} returned empty output",
                 )
 
-            if isinstance(raw_result, dict):
-                parsed = output_schema(**raw_result)
-            else:
-                # Allow agent to return already-parsed schema object
-                parsed = raw_result
+            parsed = self._parse_agent_output(
+                agent_code=agent_code,
+                raw_result=raw_result,
+                output_schema=output_schema,
+            )
 
             logger.info(
                 f"Agent {agent_code} completed successfully",
                 extra={"request_id": request.request_id, "agent": agent_code},
             )
+
             return parsed
 
         except Exception as e:
@@ -380,28 +417,68 @@ class AgentOrchestrator:
                     "details": err.to_dict(),
                 }
             )
+
             return None
 
-    def _should_stop(self, response: PipelineResponse, stage: str) -> bool:
+        finally:
+            elapsed = round(time.time() - agent_start, 4)
+            response.metadata["agent_timings"][agent_code] = elapsed
+
+    def _invoke_agent(self, agent: Any, payload: dict[str, Any]) -> Any:
         """
-        Determine if pipeline must stop based on mandatory stage failures.
+        Support different agent interfaces.
+
+        Preferred:
+            agent.run(payload)
+
+        Fallback:
+            agent.execute(payload)
+            agent.invoke(payload)
+            agent(payload)  (callable)
         """
-        if stage not in self.mandatory_agents:
-            return False
+        if hasattr(agent, "run") and callable(getattr(agent, "run")):
+            return agent.run(payload)
 
-        stage_failed = any(err.get("stage") == stage for err in response.errors)
-        if stage_failed and self.fail_fast:
-            response.status = "FAILED"
-            response.metadata["reason"] = f"Mandatory stage {stage} failed (fail_fast enabled)"
-            return True
+        if hasattr(agent, "execute") and callable(getattr(agent, "execute")):
+            return agent.execute(payload)
 
-        return False
+        if hasattr(agent, "invoke") and callable(getattr(agent, "invoke")):
+            return agent.invoke(payload)
 
+        if callable(agent):
+            return agent(payload)
+
+        raise PipelineError(f"Agent does not support known invocation interface: {agent}")
+
+    def _parse_agent_output(self, *, agent_code: str, raw_result: Any, output_schema: Any):
+        """
+        Enforce strict schema compliance.
+
+        Agent must return:
+        - dict -> converted into schema
+        - schema instance -> validated type
+        """
+        if isinstance(raw_result, dict):
+            parsed = output_schema(**raw_result)
+        else:
+            parsed = raw_result
+
+        if not isinstance(parsed, output_schema):
+            raise ValidationError(
+                message=f"{agent_code} returned invalid output type. Expected {output_schema.__name__}, got {type(parsed)}",
+                error_code="INVALID_AGENT_OUTPUT",
+                metadata={"agent": agent_code, "expected_schema": output_schema.__name__},
+            )
+
+        return parsed
+
+    # -------------------------------------------------------------------------
+    # Validation Helpers
+    # -------------------------------------------------------------------------
     def _build_validation_text(self, response: PipelineResponse) -> str:
         """
-        Build clean natural language text for validation checks.
-
-        Avoid dumping dicts. Prefer text fields from schemas.
+        Build a clean natural language body for citation + hallucination checks.
+        Avoid dumping full dicts or structured objects.
         """
         parts: list[str] = []
 
@@ -426,28 +503,84 @@ class AgentOrchestrator:
 
         return "\n".join(parts).strip()
 
-    def _finalize_failure(self, response: PipelineResponse, start_ts: float) -> PipelineResponse:
+    def _enforce_compliance_disclaimer(
+        self,
+        draft: DocumentDraftOutput,
+        compliance: ComplianceCheckOutput,
+    ) -> DocumentDraftOutput:
         """
-        Finalize pipeline in failure mode.
-        """
-        response.status = "FAILED"
-        response.metadata["draft_generated"] = False
-        return self._finalize(response, start_ts)
+        Enforce compliance disclaimer insertion.
 
-    def _finalize(self, response: PipelineResponse, start_ts: float) -> PipelineResponse:
+        This ensures the pipeline is safe even if DGA ignores compliance notes.
         """
-        Add duration + finalize response.
+        if not compliance.disclaimer_required:
+            return draft
+
+        disclaimer_text = (compliance.disclaimer_text or "").strip()
+        if not disclaimer_text:
+            disclaimer_text = (
+                "Disclaimer: This draft is generated for informational purposes only and does not constitute legal advice."
+            )
+
+        draft_text = (draft.draft_text or "").strip()
+
+        # Prevent duplicate disclaimer insertion
+        if disclaimer_text.lower() in draft_text.lower():
+            return draft
+
+        updated_text = f"{disclaimer_text}\n\n{draft_text}".strip()
+
+        return DocumentDraftOutput(
+            draft_text=updated_text,
+            format=draft.format,
+            metadata=draft.metadata,
+        )
+
+    # -------------------------------------------------------------------------
+    # Pipeline Stop + Finalization
+    # -------------------------------------------------------------------------
+    def _should_stop(self, response: PipelineResponse, stage: str) -> bool:
         """
-        duration = round(time.time() - start_ts, 3)
-        response.metadata["execution_time_seconds"] = duration
+        Stop pipeline if mandatory stage fails (fail-fast enabled).
+        """
+        if stage not in self.mandatory_agents:
+            return False
+
+        stage_failed = any(err.get("stage") == stage for err in response.errors)
+
+        if stage_failed and self.fail_fast:
+            response.status = "FAILED"
+            response.metadata["reason"] = f"Mandatory stage {stage} failed"
+            response.metadata["draft_generated"] = False
+            return True
+
+        return False
+
+    def _finalize(self, response: PipelineResponse, pipeline_start: float) -> PipelineResponse:
+        """
+        Finalize pipeline response with total duration.
+        """
+        total_duration = round(time.time() - pipeline_start, 4)
+        response.metadata["execution_time_seconds"] = total_duration
 
         logger.info(
             "Pipeline completed",
             extra={
                 "request_id": response.request_id,
                 "status": response.status,
-                "duration_seconds": duration,
+                "execution_time_seconds": total_duration,
             },
         )
 
         return response
+
+    def _safe_asdict(self, obj: Any) -> Optional[dict[str, Any]]:
+        """
+        Convert dataclass to dict safely.
+        """
+        if obj is None:
+            return None
+        try:
+            return asdict(obj)
+        except Exception:
+            return None
