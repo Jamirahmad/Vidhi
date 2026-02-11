@@ -9,76 +9,171 @@ It intentionally contains NO model logic.
 
 from __future__ import annotations
 
-from typing import Dict, List
+import re
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
-try:
-    # Low-level signal checks (already implemented by you)
-    from src.validation.hallucination_checks import run_checks  # type: ignore
-except ImportError:
-    run_checks = None
+
+@dataclass
+class HallucinationDetectionResult:
+    """
+    Structured output for hallucination detection.
+    """
+    hallucination_risk: str  # LOW / MEDIUM / HIGH
+    score: float
+    reasons: list[str] = field(default_factory=list)
+    flagged_segments: list[str] = field(default_factory=list)
 
 
 class HallucinationDetector:
     """
-    Validation-layer hallucination detector.
+    Heuristic hallucination detector for legal content.
 
-    Produces a deterministic hallucination risk report by aggregating
-    heuristic signals such as absolute language, missing citations,
-    and overconfident phrasing.
+    This detector does NOT confirm truth.
+    It flags content patterns that typically indicate hallucination risk:
+    - strong absolute claims without citations
+    - fake-looking citations
+    - inconsistent legal phrasing
+    - suspicious case numbers
+    - overconfident wording
+
+    Intended use:
+    - pipeline guardrails
+    - warning system before final draft is returned
     """
 
-    def __init__(self):
-        pass
+    ABSOLUTE_CLAIM_PATTERNS = [
+        r"\bclearly\b",
+        r"\bundoubtedly\b",
+        r"\bwithout any doubt\b",
+        r"\b100%\b",
+        r"\bguaranteed\b",
+        r"\bdefinitely\b",
+        r"\balways\b",
+        r"\bnever\b",
+        r"\bno question\b",
+        r"\bconclusively\b",
+    ]
 
-    def evaluate(self, text: str, citations: List[Dict] | None = None) -> Dict:
+    FAKE_CITATION_PATTERNS = [
+        r"\bAIR\s+\d{4}\s+[A-Z]{2,}\s+\d{1,2}\b",          # AIR 2020 SC 1 (too small page number suspicious)
+        r"\bMANU/[A-Z]{2,}/0000/\d{4}\b",                  # MANU/SC/0000/2023 suspicious
+        r"\b\d{4}\s*\(\d+\)\s*SCC\s*0\b",                  # SCC 0 suspicious
+        r"\b\d{4}\s*INSC\s*0\b",                           # INSC 0 suspicious
+    ]
+
+    STRONG_LEGAL_ASSERTION_PATTERNS = [
+        r"\bthe Supreme Court held\b",
+        r"\bthe High Court held\b",
+        r"\bsettled law\b",
+        r"\bestablished principle\b",
+        r"\bprecedent\b",
+        r"\bdoctrine\b",
+        r"\bit is mandatory\b",
+        r"\bit is illegal\b",
+        r"\bvoid ab initio\b",
+        r"\bconstitutional right\b",
+    ]
+
+    GENERIC_HALLUCINATION_PATTERNS = [
+        r"\bas per the above case\b",
+        r"\bas discussed earlier\b",
+        r"\bthe case mentioned above\b",
+        r"\bthe statute mentioned above\b",
+        r"\bthe law clearly states\b",
+        r"\bthe judgement states\b",
+    ]
+
+    def __init__(self):
+        self._absolute_regex = re.compile("|".join(self.ABSOLUTE_CLAIM_PATTERNS), re.IGNORECASE)
+        self._fake_citation_regex = re.compile("|".join(self.FAKE_CITATION_PATTERNS), re.IGNORECASE)
+        self._strong_assertion_regex = re.compile("|".join(self.STRONG_LEGAL_ASSERTION_PATTERNS), re.IGNORECASE)
+        self._generic_hallu_regex = re.compile("|".join(self.GENERIC_HALLUCINATION_PATTERNS), re.IGNORECASE)
+
+        # Citation regex used to detect if any citations exist at all
+        self._citation_regex = re.compile(
+            r"(AIR\s+\d{4}\s+[A-Z]{2,}\s+\d+)|(\d{4}\s*\(\d+\)\s*SCC\s*\d+)|(MANU/[A-Z]{2,}/\d{3,4}/\d{4})",
+            re.IGNORECASE,
+        )
+
+    def detect(
+        self,
+        text: str,
+        context: Optional[dict[str, Any]] = None,
+    ) -> HallucinationDetectionResult:
         """
-        Evaluate hallucination risk for generated text.
+        Detect hallucination risk in legal draft.
 
         Returns:
-        {
-            "risk_level": "low" | "medium" | "high",
-            "risk_score": float (0.0 - 1.0),
-            "signals": List[str]
-        }
+            HallucinationDetectionResult
         """
+        if not text or not text.strip():
+            return HallucinationDetectionResult(
+                hallucination_risk="HIGH",
+                score=1.0,
+                reasons=["Empty response received. High hallucination risk due to missing content."],
+                flagged_segments=[],
+            )
 
-        citations = citations or []
+        reasons = []
+        flagged_segments = []
 
-        # --------------------------------------------------
-        # Fallback: ultra-safe default
-        # --------------------------------------------------
-        if run_checks is None:
-            return {
-                "risk_level": "low",
-                "risk_score": 0.0,
-                "signals": [],
-            }
+        score = 0.0
 
-        # --------------------------------------------------
-        # Collect hallucination signals
-        # --------------------------------------------------
-        signals: List[str] = run_checks(text=text, citations=citations)
+        # 1. Absolute claims increase risk
+        absolute_matches = self._absolute_regex.findall(text)
+        if absolute_matches:
+            score += 0.20
+            reasons.append("Overconfident/absolute language detected.")
+            flagged_segments.extend(list(set(absolute_matches)))
 
-        # --------------------------------------------------
-        # Deterministic scoring model
-        # --------------------------------------------------
-        # Each signal contributes a fixed weight.
-        # This keeps behavior predictable and testable.
-        weight_per_signal = 0.3
-        risk_score = min(1.0, len(signals) * weight_per_signal)
+        # 2. Strong legal assertions without citations
+        strong_assertions = self._strong_assertion_regex.findall(text)
+        citations_present = bool(self._citation_regex.search(text))
 
-        if risk_score >= 0.7:
-            risk_level = "high"
-        elif risk_score >= 0.4:
-            risk_level = "medium"
+        if strong_assertions and not citations_present:
+            score += 0.35
+            reasons.append("Strong legal assertions present without citations.")
+            flagged_segments.extend(list(set(strong_assertions)))
+
+        # 3. Fake-looking citations
+        fake_citations = self._fake_citation_regex.findall(text)
+        if fake_citations:
+            score += 0.40
+            reasons.append("Suspicious or malformed citations detected.")
+            flagged_segments.extend(list(set(fake_citations)))
+
+        # 4. Generic hallucination phrases
+        generic_phrases = self._generic_hallu_regex.findall(text)
+        if generic_phrases:
+            score += 0.15
+            reasons.append("Generic referencing language detected (possible fabricated context).")
+            flagged_segments.extend(list(set(generic_phrases)))
+
+        # 5. Context-based heuristics
+        if context:
+            jurisdiction = str(context.get("jurisdiction", "")).strip().lower()
+            if jurisdiction and jurisdiction not in {"india", "indian"}:
+                score += 0.05
+                reasons.append("Jurisdiction is non-Indian but output patterns appear India-specific.")
+
+        # Clamp score to [0, 1]
+        score = max(0.0, min(score, 1.0))
+
+        # Risk bands
+        if score >= 0.70:
+            risk = "HIGH"
+        elif score >= 0.35:
+            risk = "MEDIUM"
         else:
-            risk_level = "low"
+            risk = "LOW"
 
-        return {
-            "risk_level": risk_level,
-            "risk_score": round(risk_score, 2),
-            "signals": signals,
-        }
+        if not reasons:
+            reasons.append("No strong hallucination indicators detected.")
 
-
-__all__ = ["HallucinationDetector"]
+        return HallucinationDetectionResult(
+            hallucination_risk=risk,
+            score=score,
+            reasons=reasons,
+            flagged_segments=sorted(set(flagged_segments)),
+        )
