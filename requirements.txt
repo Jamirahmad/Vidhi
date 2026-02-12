@@ -1,1 +1,48 @@
+# Core
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+pydantic-settings>=2.0.0
+loguru>=0.7.0
 
+# API
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+
+# UI
+streamlit>=1.32.0
+
+# Retrieval / embeddings
+numpy>=1.26.0
+scikit-learn>=1.4.0
+faiss-cpu>=1.8.0
+chromadb>=0.4.24
+sentence-transformers>=2.6.0
+langgraph>=0.2.0
+
+# Data parsing and utilities
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+pypdf>=4.0.0
+pdfplumber>=0.11.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+langdetect>=1.0.9
+regex>=2023.12.25
+pyyaml>=6.0.1
+
+# Storage
+boto3>=1.34.0
+
+# Optional LLM provider
+openai>=1.0.0
+
+# Test/development
+pytest>=8.0.0
+pytest-cov>=4.1.0
+httpx>=0.27.0
+black>=24.0.0
+ruff>=0.2.0
+mypy>=1.8.0
+pre-commit>=3.6.0
