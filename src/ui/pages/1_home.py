@@ -10,6 +10,14 @@ from __future__ import annotations
 import streamlit as st
 
 
+def _safe_page_link(target: str, *, label: str, help_text: str) -> None:
+    """Render a page link with fallback for non-multipage contexts."""
+    try:
+        st.page_link(target, label=label, help=help_text)
+    except Exception:
+        st.caption(f"Open **{label}** from the left sidebar navigation.")
+
+
 # ---------------------------------------------------------------------
 # Page Config
 # ---------------------------------------------------------------------
@@ -102,17 +110,17 @@ st.markdown("### 🚀 Get started")
 col1, col2 = st.columns(2)
 
 with col1:
-    st.page_link(
-        "pages/2_case_analysis.py",
-        label="📁 Start Case Analysis",
-        help="Upload or select documents and ask questions",
+    _safe_page_link(
+        "pages/2_case_intake.py",
+        label="📁 Start Case Intake",
+        help_text="Upload or select documents and ask questions",
     )
 
 with col2:
-    st.page_link(
-        "pages/3_about.py",
-        label="ℹ️ About the System",
-        help="Learn about architecture, design choices, and safeguards",
+    _safe_page_link(
+        "pages/3_case_research.py",
+        label="🔎 Continue to Case Research",
+        help_text="Run legal research on the intake context",
     )
 
 
