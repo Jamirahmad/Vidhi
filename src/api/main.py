@@ -19,6 +19,7 @@ from src.config.logging_config import configure_logging
 
 from src.api.middleware.request_logger import request_logger_middleware
 from src.api.middleware.rate_limiter import rate_limiter_middleware
+from src.api.middleware.security_headers import security_headers_middleware
 from src.api.middleware.exception_handler import (
     http_exception_handler,
     validation_exception_handler,
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
 
     # Request tracing & rate limiting
     app.middleware("http")(request_logger_middleware)
+    app.middleware("http")(security_headers_middleware)
     app.middleware("http")(rate_limiter_middleware)
 
     # -----------------------------------------------------------------
@@ -141,5 +143,5 @@ if __name__ == "__main__":
         "src.api.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
+        reload=settings.APP_ENV == "development",
     )

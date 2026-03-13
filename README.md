@@ -99,32 +99,47 @@ Vidhi is strictly a research and drafting assistant.
 
 ### Step-by-step Workflow
 
-1. Launch the central orchestrator:
+1. Create and activate a virtual environment:
 ```bash
-   python agents/orchestrator.py
+python -m venv .venv
+source .venv/bin/activate
 ```
-2. Provide inputs:
-- Case facts
-- Relevant legal issues
-- Jurisdiction (State / Court)
-- Case type (civil/criminal/tribunal)
 
-3. Vidhi runs a multi-agent workflow:
-- **CaseFinder** → retrieves relevant precedents
-- **IssueSpotter** → identifies legal issues and applicable sections
-- **LimitationChecker** → evaluates limitation/time-bar conditions
-- **ArgumentBuilder** → generates arguments and counter-arguments
-- **DocComposer** → drafts legal documents
-- **ComplianceGuard** → checks filing requirements and formatting
-- **AidConnector** → suggests legal aid options if applicable
+2. Install dependencies and copy environment config:
+```bash
+pip install -r requirements.txt
+cp .env.example .env
+```
 
-4. Final output is returned for human verification and lawyer review.
+3. Start the FastAPI backend:
+```bash
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
+
+4. Start the Streamlit UI (new terminal):
+```bash
+streamlit run src/ui/streamlit_app.py --server.port 8501
+```
+
+5. Open the app:
+- API docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/health/live`
+- UI: `http://localhost:8501`
 
 ---
 
 ## Getting Started
+
+### Run with helper scripts
+```bash
+bash scripts/run_api.sh
+bash scripts/run_ui.sh
+# or launch both (API in background + UI foreground)
+bash scripts/start_all.sh
+```
+
 ### Prerequisites
-- Python 3.9+
+- Python 3.10 to 3.13 (3.14 not yet supported)
 - Jupyter Notebook / VS Code
 - Git installed
 
@@ -161,7 +176,8 @@ vidhi/
 ├── docs/                  # Architecture diagrams and documentation
 ├── notebooks/             # Jupyter notebooks for experiments
 ├── tests/                 # Unit tests and evaluation scripts
-├── app/                   # Streamlit / API entrypoints
+├── src/api/               # FastAPI routes and app bootstrap
+├── src/ui/                # Streamlit app and pages
 │
 ├── README.md
 ├── LICENSE
