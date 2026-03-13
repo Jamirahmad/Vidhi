@@ -5,6 +5,15 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+
+import sys
+from pathlib import Path
+
+# Ensure project root is importable when Streamlit runs from nested cwd (e.g. Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from typing import Dict, List
 
 import streamlit as st
