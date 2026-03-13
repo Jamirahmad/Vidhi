@@ -1,21 +1,10 @@
-"""
-Document Routes
+"""Document generation API routes."""
 
-Endpoints responsible for:
-- Generating draft legal documents (petitions, notices, affidavits, etc.)
-- Enforcing human-in-the-loop review
-- Returning traceable, auditable outputs
-
-Backed by:
-- DGADocumentGenerationAgent (DocComposer)
-"""
-
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Request, status
 
 from src.agents.dga_document_generation_agent import DGADocumentGenerationAgent
 from src.api.schemas.request_models import DocumentGenerationRequest
 from src.api.schemas.response_models import DocumentGenerationResponse
-from src.config.settings import get_settings
 
 router = APIRouter()
 
@@ -25,49 +14,29 @@ router = APIRouter()
     response_model=DocumentGenerationResponse,
     status_code=status.HTTP_200_OK,
 )
-async def generate_document(
-    request: Request,
-    payload: DocumentGenerationRequest,
-    settings=Depends(get_settings),
-):
-    """
-    Generate a draft legal document based on structured inputs.
-
-    IMPORTANT:
-    - Output is a DRAFT only
-    - Human lawyer review is ALWAYS required
-    """
-
+async def generate_document(request: Request, payload: DocumentGenerationRequest):
     agent = DGADocumentGenerationAgent()
 
-    try:
-        result = agent.execute(
-            case_facts=payload.case_facts,
-            legal_issues=payload.legal_issues,
-            arguments=payload.arguments,
-            jurisdiction=payload.jurisdiction,
-            case_type=payload.case_type,
-            document_type=payload.document_type,
-            language=payload.language,
-            metadata=payload.metadata,
-            request_id=getattr(request.state, "request_id", None),
-        )
+    result = agent.run(
+        {
+            "request_id": payload.request_id,
+            "jurisdiction": payload.jurisdiction,
+            "document_type": payload.document_type,
+            "case_description": payload.facts,
+            "issues": {"primary_issues": [payload.case_type]},
+            "compliance": {"disclaimer_required": True},
+        }
+    )
 
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Document generation failed due to internal error",
-        ) from exc
+    data = result.get("data", {})
 
     return {
-        "request_id": getattr(request.state, "request_id", None),
-        "agent": result["agent"],
-        "status": result["status"],
+        "request_id": payload.request_id or getattr(request.state, "request_id", ""),
+        "status": result.get("status", "FAILED"),
+        "requires_human_review": True,
+        "messages": ["DRAFT ONLY - lawyer review required"],
+        "trace_id": None,
         "document_type": payload.document_type,
-        "language": payload.language,
-        "draft_text": result["output"].get("draft_text"),
-        "citations": result["output"].get("citations"),
-        "warnings": result["output"].get("warnings"),
-        "requires_human_review": True,  # ALWAYS enforced at API layer
-        "trace": result["trace"],
+        "draft_text": data.get("draft_text", ""),
+        "warnings": ["Auto-generated draft; verify facts, sections, and citations."],
     }
