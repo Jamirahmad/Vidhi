@@ -126,3 +126,8 @@ def get_agent_trace_logger() -> logging.Logger:
     Retrieve the dedicated agent trace logger.
     """
     return logging.getLogger("vidhi.agent_trace")
+
+
+def configure_logging() -> None:
+    """Backward-compatible alias used by API bootstrap."""
+    setup_logging()

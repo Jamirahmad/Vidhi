@@ -1,52 +1,20 @@
-"""
-Legal Aid Page
-
-Provides informational legal guidance, awareness of rights,
-and next-step suggestions without offering legal advice.
-"""
+"""Legal Aid Page."""
 
 from __future__ import annotations
 
+import requests
 import streamlit as st
 
-
-# ---------------------------------------------------------------------
-# Page Config
-# ---------------------------------------------------------------------
-
-st.set_page_config(
-    page_title="Legal Aid",
-    page_icon="⚖️",
-    layout="wide",
-)
-
-
-# ---------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------
+st.set_page_config(page_title="Legal Aid", page_icon="⚖️", layout="wide")
 
 st.title("⚖️ Legal Aid & Guidance")
+st.markdown("This page provides general legal-aid guidance using retrieval-backed context. It does not provide legal advice and always requires human review.")
 
-st.markdown(
-    """
-    This page provides **general legal information and guidance**
-    to help users understand common legal issues and possible next steps.
-
-    🚨 **This is not legal advice.**  
-    For case-specific advice, always consult a qualified legal professional.
-    """
-)
-
-
-# ---------------------------------------------------------------------
-# Area of Law Selection
-# ---------------------------------------------------------------------
-
-st.markdown("## 📂 Select Area of Law")
-
+st.markdown("## 📂 Area of Law")
 area_of_law = st.selectbox(
-    "Choose a category",
+    "Choose an area of law",
     options=[
+        "Select an area of law",
         "Civil Disputes",
         "Criminal Matters",
         "Family Law",
@@ -56,111 +24,61 @@ area_of_law = st.selectbox(
         "Constitutional Remedies",
         "Other",
     ],
+    index=0,
 )
 
-if not area_of_law:
-    st.stop()
-
-
-# ---------------------------------------------------------------------
-# Issue Description
-# ---------------------------------------------------------------------
-
 st.markdown("## 📝 Describe the Issue")
-
 issue_description = st.text_area(
     "Briefly describe your situation",
     height=180,
-    placeholder=(
-        "Example: My consumer complaint has been pending for several years "
-        "and I am unsure what remedies are available."
-    ),
+    placeholder="Describe your legal issue in your own words...",
 )
 
-if not issue_description.strip():
-    st.info("Please describe the issue to continue.")
-    st.stop()
+if st.button("Generate Ethical Guidance"):
+    if area_of_law == "Select an area of law":
+        st.warning("Please choose an area of law before continuing.")
+        st.stop()
 
+    if not issue_description.strip():
+        st.warning("Please describe the issue to continue.")
+        st.stop()
 
-# ---------------------------------------------------------------------
-# Generate Guidance
-# ---------------------------------------------------------------------
+    payload = {
+        "request_id": f"AID-{area_of_law[:10]}",
+        "jurisdiction": "India",
+        "case_type": area_of_law,
+        "case_context": issue_description,
+        "constraints": {"mode": "legal_aid", "ethical": "true"},
+    }
 
-st.markdown("## 💡 General Guidance")
+    with st.spinner("Generating guidance from RAG/LLM backend…"):
+        try:
+            response = requests.post("http://127.0.0.1:8000/research/run", json=payload, timeout=30)
+            response.raise_for_status()
+            result = response.json()
+        except Exception as exc:
+            st.error(f"Could not generate guidance from backend: {exc}")
+            st.stop()
 
-if st.button("Get General Guidance"):
-    with st.spinner("Preparing guidance…"):
-        # -------------------------------------------------------------
-        # PLACEHOLDER: Informational guidance engine
-        # -------------------------------------------------------------
-        # guidance = legal_aid_service.generate(
-        #     area=area_of_law,
-        #     issue=issue_description,
-        # )
-        # -------------------------------------------------------------
+    guidance_text = "\n".join(result.get("messages", []))
+    precedents = result.get("precedents", [])
 
-        # Mocked informational response
-        guidance = {
-            "overview": (
-                "Delays in adjudication are common in consumer disputes. "
-                "Several procedural and constitutional remedies may be available."
-            ),
-            "possible_steps": [
-                "Check the current status of the case with the relevant forum.",
-                "Consider filing an application for early hearing.",
-                "Explore alternative dispute resolution mechanisms if applicable.",
-                "Seek advice from a legal aid clinic or consumer organization.",
-            ],
-            "important_note": (
-                "The suitability of these steps depends on the facts of the case "
-                "and applicable law."
-            ),
-        }
+    st.markdown("### 📘 Guidance")
+    st.write(guidance_text or "No guidance returned.")
 
-        st.success("General information prepared.")
+    st.markdown("### 📚 Retrieved References")
+    if precedents:
+        for idx, item in enumerate(precedents, start=1):
+            st.markdown(f"{idx}. **{item.get('title', 'Untitled')}** — {item.get('citation', 'Source unavailable')}")
+    else:
+        st.info("No references returned for this request.")
 
-
-# ---------------------------------------------------------------------
-# Display Guidance
-# ---------------------------------------------------------------------
-
-if "guidance" in locals():
-
-    st.markdown("### 📘 Overview")
-    st.write(guidance["overview"])
-
-    st.markdown("### 🧭 Possible Next Steps")
-    for step in guidance["possible_steps"]:
-        st.markdown(f"- {step}")
-
-    st.markdown("### ⚠️ Important Note")
-    st.warning(guidance["important_note"])
-
-
-# ---------------------------------------------------------------------
-# Legal Aid Resources
-# ---------------------------------------------------------------------
-
-st.markdown("## 🏛 Legal Aid Resources (India)")
-
-st.markdown(
-    """
-    You may consider reaching out to the following **official and non-profit resources**:
-    - **National Legal Services Authority (NALSA)**
-    - **State Legal Services Authorities**
-    - **District Legal Services Committees**
-    - **Recognized Legal Aid Clinics**
-    - **Consumer Forums & Lok Adalats**
-    """
-)
-
-
-# ---------------------------------------------------------------------
-# Disclaimer
-# ---------------------------------------------------------------------
+    st.warning(
+        "Ethical safeguard: This output is informational only, not legal advice. "
+        "Please consult a qualified legal professional before taking action."
+    )
 
 st.divider()
 st.caption(
-    "This page provides general legal information only and does not "
-    "constitute legal advice, representation, or a lawyer-client relationship."
+    "This page provides informational workflow support only and does not constitute legal advice."
 )

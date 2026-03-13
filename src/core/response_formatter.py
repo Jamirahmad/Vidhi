@@ -1219,3 +1219,31 @@ The Petitioner most respectfully submits as follows:
         sample_report['case_information']
     )
     print(bail_doc[:1000] + "\n... (truncated)")
+
+
+def format_research_response(
+    *,
+    orchestration_result: dict,
+    request_id: str,
+    generated_at: str,
+) -> dict:
+    """API response adapter for research route."""
+    status = orchestration_result.get("status", "FAILED")
+    summary = orchestration_result.get("summary", "")
+    llm_used = bool(orchestration_result.get("llm_used", False))
+    retrieved_count = int(orchestration_result.get("retrieved_count", 0))
+
+    messages = [f"generated_at={generated_at}", f"llm_used={llm_used}", f"retrieved_count={retrieved_count}"]
+    if summary:
+        messages.append(summary)
+
+    return {
+        "request_id": request_id,
+        "status": status,
+        "requires_human_review": bool(orchestration_result.get("requires_human_review", True)),
+        "messages": messages,
+        "trace_id": None,
+        "issues_identified": orchestration_result.get("issues", []),
+        "precedents": orchestration_result.get("precedents", []),
+        "confidence_score": 0.75 if llm_used else (0.55 if status == "SUCCESS" else 0.0),
+    }

@@ -7,181 +7,109 @@ review retrieved answers, inspect citations, and preview source documents.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Dict, List
 
+import requests
 import streamlit as st
+
+# Ensure project root is importable when Streamlit runs from nested cwd (e.g. Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.ui.components.citation_viewer import render_citation_viewer
 from src.ui.components.document_preview import render_document_preview
 from src.ui.components.download_buttons import render_download_buttons
+from src.ui.components.app_state import get_registered_cases, set_latest_citations
 
-
-# ---------------------------------------------------------------------
-# Page Config
-# ---------------------------------------------------------------------
-
-st.set_page_config(
-    page_title="Case Research",
-    page_icon="🔍",
-    layout="wide",
-)
-
-
-# ---------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------
+st.set_page_config(page_title="Case Research", page_icon="🔍", layout="wide")
 
 st.title("🔍 Case Research")
-
 st.markdown(
     """
     Use this page to **research a case by asking focused legal questions**.
-    Answers are generated strictly from ingested documents and are
-    always accompanied by citations for verification.
+    Answers are generated from API retrieval + synthesis and accompanied by citations.
     """
 )
 
+st.markdown("## 📁 Select Registered Case")
+registered_cases = get_registered_cases()
+if not registered_cases:
+    st.info("No registered case found. Please complete Case Intake first.")
+    st.stop()
 
-# ---------------------------------------------------------------------
-# Case Selection (Placeholder)
-# ---------------------------------------------------------------------
+case_labels = [f"{c.get('case_id','CASE')} · {c.get('case_title','Untitled Case')}" for c in registered_cases]
+selected_label = st.selectbox("Case", options=case_labels)
+selected_case = registered_cases[case_labels.index(selected_label)]
+case_reference = selected_case.get("case_id", "CASE")
+st.markdown("## ❓ Ask a Legal Question")
+query = st.text_area("Enter your question", height=100)
 
-st.markdown("## 📁 Select Case")
+jurisdiction = st.text_input("Jurisdiction", value=selected_case.get("jurisdiction", "India"))
+case_type = st.text_input("Case Type", value=selected_case.get("case_type", "civil"))
 
-# NOTE: Replace this with real case registry later
-available_cases = [
-    "SC-2024-1234 · ABC Ltd vs Union of India",
-    "HC-2023-998 · XYZ vs State of Maharashtra",
+if not st.button("🔍 Run Research"):
+    st.stop()
+
+if not query.strip() or not case_reference.strip():
+    st.warning("Please provide both case reference and question.")
+    st.stop()
+
+payload = {
+    "request_id": f"UI-{case_reference[:20]}",
+    "jurisdiction": jurisdiction,
+    "case_type": case_type,
+    "case_context": query,
+    "constraints": {},
+}
+
+with st.spinner("Calling research API…"):
+    try:
+        response = requests.post("http://127.0.0.1:8000/research/run", json=payload, timeout=30)
+        response.raise_for_status()
+        api_result = response.json()
+    except Exception as exc:
+        st.error(f"Research API unavailable or failed: {exc}")
+        st.stop()
+
+answer_text = "\n".join(api_result.get("messages", []))
+precedents = api_result.get("precedents", [])
+
+citations: List[Dict[str, str]] = [
+    {
+        "case_id": case_reference,
+        "case_title": item.get("title", "Retrieved Source"),
+        "court": item.get("court", jurisdiction),
+        "year": "",
+        "bench": "",
+        "document_type": "Retrieved Document",
+        "source": item.get("citation", "") or "RAG Corpus",
+        "excerpt": "",
+        "storage_path": "",
+    }
+    for item in precedents
 ]
 
-selected_case = st.selectbox(
-    "Choose a registered case",
-    options=available_cases,
-)
-
-if not selected_case:
-    st.info("Please select a case to continue.")
-    st.stop()
-
-
-# ---------------------------------------------------------------------
-# Question Input
-# ---------------------------------------------------------------------
-
-st.markdown("## ❓ Ask a Legal Question")
-
-query = st.text_area(
-    "Enter your question",
-    placeholder=(
-        "Example: What did the court hold regarding limitation "
-        "under Section 14 of the Limitation Act?"
-    ),
-    height=100,
-)
-
-ask_button = st.button("🔍 Run Research")
-
-if not ask_button:
-    st.stop()
-
-if not query.strip():
-    st.warning("Please enter a question before proceeding.")
-    st.stop()
-
-
-# ---------------------------------------------------------------------
-# Research Execution (Placeholder)
-# ---------------------------------------------------------------------
-
-with st.spinner("Retrieving relevant documents and generating answer…"):
-    # -------------------------------------------------------------
-    # PLACEHOLDER: Backend retrieval & answer generation
-    # -------------------------------------------------------------
-    # result = research_service.answer(
-    #     case_id=selected_case,
-    #     query=query,
-    # )
-    # -------------------------------------------------------------
-
-    # Mocked response (for UI completeness)
-    answer_text = (
-        "The court held that Section 14 of the Limitation Act applies "
-        "when the prior proceeding was prosecuted with due diligence "
-        "and in good faith before a forum lacking jurisdiction."
-    )
-
-    citations: List[Dict[str, str]] = [
-        {
-            "case_id": "SC-2024-1234",
-            "case_title": "ABC Ltd vs Union of India",
-            "court": "Supreme Court",
-            "year": "2024",
-            "bench": "Justice A.B. Sharma",
-            "document_type": "Judgment",
-            "source": "Supreme Court Website",
-            "excerpt": (
-                "Section 14 shall apply where the prior proceeding "
-                "was prosecuted with due diligence and in good faith…"
-            ),
-            "storage_path": "data/raw/SC-2024-1234/judgment.pdf",
-        }
-    ]
-
-    retrieved_text = citations[0]["excerpt"]
-
-
-# ---------------------------------------------------------------------
-# Answer Section
-# ---------------------------------------------------------------------
+set_latest_citations(citations)
 
 st.markdown("## 📝 Answer")
-
-st.success("Answer generated from available case documents.")
-st.markdown(answer_text)
-
-
-# ---------------------------------------------------------------------
-# Citations
-# ---------------------------------------------------------------------
+st.success("Research response received.")
+st.markdown(answer_text or "No answer text returned by API.")
 
 st.markdown("## 📚 Citations")
-
-render_citation_viewer(
-    citations=citations,
-    expanded=False,
-)
-
-
-# ---------------------------------------------------------------------
-# Document Preview
-# ---------------------------------------------------------------------
+render_citation_viewer(citations=citations, expanded=False)
 
 st.markdown("## 📄 Source Preview")
-
-render_document_preview(
-    file_path=citations[0].get("storage_path"),
-    text_content=citations[0].get("excerpt"),
-)
-
-
-# ---------------------------------------------------------------------
-# Downloads
-# ---------------------------------------------------------------------
+render_document_preview(file_path=None, text_content=answer_text)
 
 render_download_buttons(
     answer_text=answer_text,
     citations=citations,
-    raw_content=retrieved_text,
-    filename_prefix=selected_case.split("·")[0].strip(),
+    raw_content=answer_text,
+    filename_prefix=case_reference.replace(" ", "_")[:40],
 )
-
-
-# ---------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------
 
 st.divider()
-st.caption(
-    "Always verify cited passages in the original document "
-    "before relying on an answer."
-)
+st.caption("Always verify cited passages in original sources before relying on outputs.")
