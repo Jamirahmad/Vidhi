@@ -1246,4 +1246,9 @@ def format_research_response(
         "issues_identified": orchestration_result.get("issues", []),
         "precedents": orchestration_result.get("precedents", []),
         "confidence_score": 0.75 if llm_used else (0.55 if status == "SUCCESS" else 0.0),
+        "messages": [f"generated_at={generated_at}"],
+        "trace_id": None,
+        "issues_identified": orchestration_result.get("issues", []),
+        "precedents": orchestration_result.get("precedents", []),
+        "confidence_score": 0.5 if status == "SUCCESS" else 0.0,
     }
