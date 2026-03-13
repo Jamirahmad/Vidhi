@@ -22,6 +22,7 @@ import streamlit as st
 
 from src.ui.components.case_form import render_case_form
 from src.ui.components.download_buttons import render_download_buttons
+from src.ui.components.app_state import register_case
 
 
 # ---------------------------------------------------------------------
@@ -64,7 +65,7 @@ if not case_data:
     st.stop()
 
 st.success("Case registered successfully.")
-st.json(case_data)
+register_case(case_data)
 
 
 # ---------------------------------------------------------------------
