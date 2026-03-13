@@ -16,7 +16,7 @@ from typing import Dict
 from src.api.schemas.request_models import ResearchRequest
 from src.api.schemas.response_models import ResearchResponse
 from src.config.settings import get_settings
-from src.core.orchestrator import Orchestrator
+from src.core.api_orchestrator import Orchestrator
 from src.core.response_formatter import format_research_response
 from src.utils.time_utils import utc_now_iso
 

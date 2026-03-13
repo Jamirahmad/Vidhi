@@ -124,3 +124,8 @@ def add_secret_masking_filter(secrets: list[str]) -> None:
 
     for handler in root_logger.handlers:
         handler.addFilter(masking_filter)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Return module logger after global logging is configured."""
+    return logging.getLogger(name)
