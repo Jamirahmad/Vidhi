@@ -1,240 +1,123 @@
-"""
-Compliance Check Page
-
-Performs compliance and quality checks on generated answers,
-arguments, or documents before external or formal use.
-"""
+"""Compliance Check Page."""
 
 from __future__ import annotations
 
+import json
+import re
+import sys
+from pathlib import Path
 from typing import Dict, List
 
 import streamlit as st
 
+# Ensure project root is importable when Streamlit runs from nested cwd (e.g. Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from src.ui.components.citation_viewer import render_citation_viewer
 from src.ui.components.download_buttons import render_download_buttons
+from src.ui.components.app_state import get_registered_cases, get_latest_citations
 
-
-# ---------------------------------------------------------------------
-# Page Config
-# ---------------------------------------------------------------------
-
-st.set_page_config(
-    page_title="Compliance Check",
-    page_icon="✅",
-    layout="wide",
-)
-
-
-# ---------------------------------------------------------------------
-# Header
-# ---------------------------------------------------------------------
+st.set_page_config(page_title="Compliance Check", page_icon="✅", layout="wide")
 
 st.title("✅ Compliance Check")
+st.markdown("Review user-provided content for citation and consistency risks.")
 
-st.markdown(
-    """
-    Use this page to **review generated content for compliance, quality,
-    and citation integrity** before relying on it for internal or external use.
-
-    This is a **review tool**, not an automatic approval system.
-    """
-)
-
-
-# ---------------------------------------------------------------------
-# Select Case & Content Type
-# ---------------------------------------------------------------------
-
-st.markdown("## 📁 Select Case")
-
-available_cases = [
-    "SC-2024-1234 · ABC Ltd vs Union of India",
-    "HC-2023-998 · XYZ vs State of Maharashtra",
-]
-
-selected_case = st.selectbox(
-    "Choose a registered case",
-    options=available_cases,
-)
-
-if not selected_case:
-    st.info("Please select a case to continue.")
+registered_cases = get_registered_cases()
+if not registered_cases:
+    st.info("No registered case found. Please complete Case Intake first.")
     st.stop()
 
-case_id = selected_case.split("·")[0].strip()
+case_labels = [f"{c.get('case_id','CASE')} · {c.get('case_title','Untitled Case')}" for c in registered_cases]
+selected_label = st.selectbox("Case", options=case_labels)
+selected_case = registered_cases[case_labels.index(selected_label)]
+case_reference = selected_case.get("case_id", "CASE")
 
-
-st.markdown("## 📄 Select Content to Review")
-
-content_type = st.radio(
-    "What would you like to review?",
-    options=[
-        "Answer",
-        "Argument Draft",
-        "Generated Document",
-    ],
-    horizontal=True,
-)
-
-
-# ---------------------------------------------------------------------
-# Content Under Review
-# ---------------------------------------------------------------------
-
-st.markdown("## 🧾 Content Under Review")
-
-content_text = st.text_area(
-    "Content",
-    height=260,
-    placeholder=(
-        "Paste or load the content you want to review for compliance."
-    ),
-)
+content_type = st.text_input("Content Type", placeholder="e.g., Argument Draft")
+content_text = st.text_area("Content Under Review", height=260)
 
 if not content_text.strip():
     st.info("Provide content to run compliance checks.")
     st.stop()
 
-
-# ---------------------------------------------------------------------
-# Supporting Citations (Placeholder)
-# ---------------------------------------------------------------------
-
-st.markdown("## 📚 Referenced Citations")
-
-# NOTE: Replace with actual citations linked to the content
-citations: List[Dict[str, str]] = [
-    {
-        "case_id": "SC-2024-1234",
-        "case_title": "ABC Ltd vs Union of India",
-        "court": "Supreme Court",
-        "year": "2024",
-        "bench": "Justice A.B. Sharma",
-        "document_type": "Judgment",
-        "source": "Supreme Court Website",
-        "excerpt": (
-            "Section 14 shall apply where the prior proceeding "
-            "was prosecuted with due diligence and in good faith…"
-        ),
-    }
-]
-
-render_citation_viewer(
-    citations=citations,
-    expanded=False,
+st.markdown("## 📚 Referenced Citations (JSON)")
+citations_json = st.text_area(
+    "Paste citations JSON list (optional)",
+    placeholder='[{"case_title":"...","court":"...","source":"..."}]',
+    height=120,
 )
 
+citations: List[Dict[str, str]] = get_latest_citations()
+if citations_json.strip():
+    try:
+        parsed = json.loads(citations_json)
+        if isinstance(parsed, list):
+            citations = [item for item in parsed if isinstance(item, dict)]
+    except Exception:
+        st.warning("Invalid citation JSON. Continuing without citations.")
 
-# ---------------------------------------------------------------------
-# Run Compliance Checks
-# ---------------------------------------------------------------------
+render_citation_viewer(citations=citations, expanded=False)
 
-st.markdown("## 🔍 Compliance Review")
-
-run_check = st.button("Run Compliance Check")
-
-if not run_check:
+if not st.button("Run Compliance Check"):
     st.stop()
 
+sentences = [s for s in re.split(r"[.!?]\s+", content_text) if s.strip()]
+citation_refs = re.findall(r"\[(\d+)\]", content_text)
 
-with st.spinner("Running compliance checks…"):
-    # -------------------------------------------------------------
-    # PLACEHOLDER: Backend compliance engine
-    # -------------------------------------------------------------
-    # result = compliance_engine.check(
-    #     content=content_text,
-    #     citations=citations,
-    #     content_type=content_type,
-    # )
-    # -------------------------------------------------------------
+coverage_ratio = (len(citation_refs) / max(1, len(sentences)))
+if coverage_ratio >= 0.6:
+    coverage = "High"
+elif coverage_ratio >= 0.25:
+    coverage = "Partial"
+else:
+    coverage = "Low"
 
-    # Mocked results for UI completeness
-    compliance_results = {
-        "citation_coverage": "Partial",
-        "unsupported_claims": True,
-        "tone_risk": "Low",
-        "hallucination_risk": "Medium",
-        "notes": [
-            "Some assertions are not directly supported by citations.",
-            "Citations are relevant but not referenced inline.",
-        ],
-    }
+unsupported_claims = len(citation_refs) == 0 and len(content_text.split()) > 40
+hallucination_risk = "Low" if citations else "Medium"
+tone_risk = "Low" if "must" not in content_text.lower() else "Medium"
 
-
-# ---------------------------------------------------------------------
-# Compliance Results
-# ---------------------------------------------------------------------
+notes: List[str] = []
+if unsupported_claims:
+    notes.append("No inline citation references detected for substantial content.")
+if not citations:
+    notes.append("No citation metadata was supplied for verification.")
+if not notes:
+    notes.append("No critical compliance red flags detected by heuristic checks.")
 
 st.markdown("## 🧠 Compliance Results")
-
 col1, col2 = st.columns(2)
-
 with col1:
-    st.metric(
-        "Citation Coverage",
-        compliance_results["citation_coverage"],
-    )
-    st.metric(
-        "Tone Risk",
-        compliance_results["tone_risk"],
-    )
-
+    st.metric("Citation Coverage", coverage)
+    st.metric("Tone Risk", tone_risk)
 with col2:
-    st.metric(
-        "Unsupported Claims",
-        "Yes" if compliance_results["unsupported_claims"] else "No",
-    )
-    st.metric(
-        "Hallucination Risk",
-        compliance_results["hallucination_risk"],
-    )
-
-
-# ---------------------------------------------------------------------
-# Review Notes
-# ---------------------------------------------------------------------
+    st.metric("Unsupported Claims", "Yes" if unsupported_claims else "No")
+    st.metric("Hallucination Risk", hallucination_risk)
 
 st.markdown("## 📝 Reviewer Notes")
-
-for note in compliance_results["notes"]:
+for note in notes:
     st.warning(note)
-
-
-# ---------------------------------------------------------------------
-# Export Compliance Report
-# ---------------------------------------------------------------------
-
-st.markdown("## ⬇️ Export Review")
 
 report_text = f"""
 COMPLIANCE REVIEW REPORT
 
-Case: {selected_case}
+Case: {case_reference}
 Content Type: {content_type}
 
-CITATION COVERAGE: {compliance_results['citation_coverage']}
-UNSUPPORTED CLAIMS: {'Yes' if compliance_results['unsupported_claims'] else 'No'}
-TONE RISK: {compliance_results['tone_risk']}
-HALLUCINATION RISK: {compliance_results['hallucination_risk']}
+CITATION COVERAGE: {coverage}
+UNSUPPORTED CLAIMS: {'Yes' if unsupported_claims else 'No'}
+TONE RISK: {tone_risk}
+HALLUCINATION RISK: {hallucination_risk}
 
 REVIEWER NOTES:
-- {chr(10).join(compliance_results['notes'])}
+- {chr(10).join(notes)}
 """.strip()
 
 render_download_buttons(
     answer_text=report_text,
     citations=citations,
-    filename_prefix=f"{case_id}_compliance_review",
+    filename_prefix=(case_reference or "case").replace(" ", "_")[:40] + "_compliance",
 )
-
-
-# ---------------------------------------------------------------------
-# Footer
-# ---------------------------------------------------------------------
 
 st.divider()
-st.caption(
-    "Compliance checks assist reviewers but do not replace "
-    "professional judgment or legal responsibility."
-)
+st.caption("Compliance checks are assistive only and require human legal review.")
