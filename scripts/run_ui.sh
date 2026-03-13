@@ -12,4 +12,4 @@ fi
 
 source .venv/bin/activate
 
-streamlit run src/ui/app.py --server.port 8501
+streamlit run src/ui/streamlit_app.py --server.port 8501

@@ -18,4 +18,4 @@ nohup uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload > logs/api.lo
 sleep 3
 
 echo "Starting Streamlit UI..."
-streamlit run src/ui/app.py --server.port 8501
+streamlit run src/ui/streamlit_app.py --server.port 8501
