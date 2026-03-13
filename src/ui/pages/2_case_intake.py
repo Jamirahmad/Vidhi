@@ -7,12 +7,22 @@ Acts as the controlled entry point into the ingestion pipeline.
 
 from __future__ import annotations
 
+
+import sys
+from pathlib import Path
+
+# Ensure project root is importable when Streamlit runs from nested cwd (e.g. Windows).
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 from typing import Optional
 
 import streamlit as st
 
 from src.ui.components.case_form import render_case_form
 from src.ui.components.download_buttons import render_download_buttons
+from src.ui.components.app_state import register_case
 
 
 # ---------------------------------------------------------------------
@@ -55,7 +65,7 @@ if not case_data:
     st.stop()
 
 st.success("Case registered successfully.")
-st.json(case_data)
+register_case(case_data)
 
 
 # ---------------------------------------------------------------------

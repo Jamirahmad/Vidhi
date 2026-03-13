@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 
@@ -40,15 +41,27 @@ def _get_path(key: str, default: str) -> Path:
     return Path(os.getenv(key, default)).expanduser().resolve()
 
 
+def _get_csv(key: str, default: str = "") -> Tuple[str, ...]:
+    raw = os.getenv(key, default)
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    return tuple(values)
+
+
 @dataclass(frozen=True)
 class Settings:
     # ----------------------------
     # Application Settings
     # ----------------------------
     APP_NAME: str = _get_str("APP_NAME", "Vidhi")
+    APP_VERSION: str = _get_str("APP_VERSION", "0.1.0")
     APP_ENV: str = _get_str("APP_ENV", "development")  # development | staging | production
+    ENVIRONMENT: str = _get_str("APP_ENV", "development")
     DEBUG: bool = _get_bool("DEBUG", True)
     LOG_LEVEL: str = _get_str("LOG_LEVEL", "INFO")
+
+    # API docs and CORS
+    ENABLE_API_DOCS: bool = _get_bool("ENABLE_API_DOCS", True)
+    CORS_ALLOW_ORIGINS: Tuple[str, ...] = _get_csv("CORS_ALLOW_ORIGINS", "*")
 
     # ----------------------------
     # API Server (FastAPI)
@@ -193,6 +206,9 @@ class Settings:
         if not (0.0 <= self.CITATION_CONFIDENCE_THRESHOLD <= 1.0):
             raise ValueError("CITATION_CONFIDENCE_THRESHOLD must be between 0.0 and 1.0")
 
+        if self.APP_ENV not in ("development", "staging", "production"):
+            raise ValueError("APP_ENV must be one of: development/staging/production")
+
     def ensure_directories(self) -> None:
         """
         Creates required directories if they do not exist.
@@ -212,3 +228,13 @@ class Settings:
 
 # Singleton settings object
 settings = Settings()
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """
+    Returns a cached Settings instance for dependency injection and runtime usage.
+    """
+    cfg = Settings()
+    cfg.validate()
+    return cfg
