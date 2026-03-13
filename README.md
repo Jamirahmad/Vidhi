@@ -139,7 +139,7 @@ bash scripts/start_all.sh
 ```
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.10 to 3.13 (3.14 not yet supported)
 - Jupyter Notebook / VS Code
 - Git installed
 
