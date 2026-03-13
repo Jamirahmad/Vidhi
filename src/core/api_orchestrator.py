@@ -1,3 +1,4 @@
+"""API-facing orchestration adapter."""
 """API-facing orchestration adapter.
 
 Keeps FastAPI route dependencies stable even if the main
@@ -8,6 +9,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.core.research_service import RAGResearchService
+
+
+class Orchestrator:
+    """Adapter used by API routes with real RAG-backed research flow."""
+
+    def __init__(self) -> None:
+        self._research_service = RAGResearchService()
 from src.agents.lra_legal_research_agent import LRALegalResearchAgent
 
 
@@ -25,6 +34,12 @@ class Orchestrator:
         case_type: str,
         user_constraints: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        return self._research_service.run(
+            case_context=case_context,
+            jurisdiction=jurisdiction,
+            case_type=case_type,
+            constraints=user_constraints,
+        )
         agent_result = self._research_agent.run(
             {
                 "case_description": case_context,
