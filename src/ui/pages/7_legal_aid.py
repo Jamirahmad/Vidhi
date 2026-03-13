@@ -8,6 +8,7 @@ import streamlit as st
 st.set_page_config(page_title="Legal Aid", page_icon="⚖️", layout="wide")
 
 st.title("⚖️ Legal Aid & Guidance")
+st.markdown("This page provides general legal-aid guidance using retrieval-backed context. It does not provide legal advice and always requires human review.")
 st.markdown(
     """
     This page provides general legal-aid guidance using retrieval-backed context.
