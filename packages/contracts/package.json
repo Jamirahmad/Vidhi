@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "echo contracts-ready"
+    "build": "echo contracts-ready",
+    "test": "vitest run src/workflow.test.ts"
   },
   "dependencies": {
     "zod": "^3.25.76"
