@@ -1,0 +1,41 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+frontend/dist-ssr/
+
+# Python
+.venv/
+.venv-api/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime data and logs
+logs/
+outputs/
+runtime_data/
+*.log
+
+# Knowledge runtime artifacts
+backend/data/knowledge/chroma_db/
+backend/data/knowledge/knowledge.db
+backend/data/knowledge/court_cases/
+
+# OS/Editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

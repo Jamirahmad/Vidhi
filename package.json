@@ -1,0 +1,28 @@
+{
+    "name":  "vidhi-monorepo",
+    "private":  true,
+    "version":  "0.1.0",
+    "workspaces":  [
+                       "frontend",
+                       "packages/contracts"
+                   ],
+    "scripts":  {
+                    "dev":  "npm --prefix frontend run dev",
+                    "build":  "npm --prefix frontend run build",
+                    "build:dev":  "npm --prefix frontend run build:dev",
+                    "lint":  "npm --prefix frontend run lint",
+                    "preview":  "npm --prefix frontend run preview",
+                    "test":  "npm --prefix frontend run test",
+                    "test:watch":  "npm --prefix frontend run test:watch",
+                    "web:dev":  "npm --prefix frontend run dev",
+                    "web:build":  "npm --prefix frontend run build",
+                    "web:test":  "npm --prefix frontend run test",
+                    "backend:setup":  "powershell -ExecutionPolicy Bypass -File scripts/backend-setup.ps1",
+                    "backend:dev":  "powershell -ExecutionPolicy Bypass -File scripts/backend-dev.ps1",
+                    "backend:dev:setup":  "npm run backend:setup \u0026\u0026 npm run backend:dev",
+                    "backend:smoke":  "powershell -ExecutionPolicy Bypass -File scripts/backend-smoke.ps1",
+                    "api:dev":  "npm run backend:dev",
+                    "api:smoke":  "npm run backend:smoke",
+                    "contracts:build":  "npm --prefix packages/contracts run build"
+                }
+}
