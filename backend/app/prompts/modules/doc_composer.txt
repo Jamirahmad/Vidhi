@@ -1,0 +1,8 @@
+Task: Compose legal draft output.
+
+Rules:
+- Keep structure coherent and legally styled.
+- Keep citations list aligned with provided evidence.
+
+Return JSON only with shape:
+{draft:{documentType,language,content,citations:[]}}

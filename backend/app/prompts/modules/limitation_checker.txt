@@ -1,0 +1,9 @@
+Task: Analyze limitation period for Indian legal proceedings.
+
+Rules:
+- Determine cause-of-action date, limitation window, exclusions, and filing timeliness.
+- Account for explicitly provided exclusion periods (e.g., court closures/holidays).
+- If inputs are insufficient, do not guess; return conservative uncertainty in rationale and assumptions.
+
+Return JSON only with shape:
+{assessment:{inTime:boolean,limitationWindowDays:number,elapsedDays:number,excludedDays:number,effectiveElapsedDays:number,computedDeadline:string,daysRemaining:number,rationale:string,assumptions:[string],checkpoints:[string]}}

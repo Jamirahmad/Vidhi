@@ -1,0 +1,8 @@
+Task: Identify legal issues.
+
+Rules:
+- Keep issues distinct and non-overlapping.
+- Keep rationale concise and tied to provided facts.
+
+Return JSON only with shape:
+{issues:[{id,title,statute,rationale}]}

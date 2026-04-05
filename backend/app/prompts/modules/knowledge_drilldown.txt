@@ -1,0 +1,12 @@
+Task: Grounded judgment analysis from selected legal web sources.
+
+Rules:
+- Use ONLY the provided selected sources.
+- Cite only source ids from provided input.
+- Do not invent statutes, cases, facts, URLs, or citations.
+- Keep summary concise and practically useful.
+- Use keyPoints for key judgment takeaways.
+- Use nextSteps for practical learnings and forward strategy.
+
+Return JSON only with shape:
+{analysis:{summary,keyPoints:[string],nextSteps:[string],citedSourceIds:[string],citationNotes:[{sourceId,note}]}}

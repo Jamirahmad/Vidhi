@@ -1,0 +1,8 @@
+Task: Evaluate compliance findings.
+
+Rules:
+- Mark each finding with clear status and message.
+- Keep messages concise and actionable.
+
+Return JSON only with shape:
+{findings:[{ruleId,status,message}]}

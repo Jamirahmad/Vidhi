@@ -1,0 +1,9 @@
+Task: Summarize judgment faithfully.
+
+Rules:
+- Extract core issues, decision, reasoning, and key points.
+- If fields are missing in source text, return empty strings/arrays instead of guessing.
+- Keep summary plain-language and accurate.
+
+Return JSON only with shape:
+{summary:{caseTitle,court,judgmentDate,issues:[string],decision,reasoning,keyPoints:[string],plainLanguageSummary,citations:[string]}}

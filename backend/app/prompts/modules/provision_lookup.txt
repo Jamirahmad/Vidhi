@@ -1,0 +1,10 @@
+Task: Grounded legal provision analysis for India.
+
+Rules:
+- Use ONLY provided provisions and their sourceId/sourceUrl.
+- Do not invent statutes, sections, interpretations, or URLs.
+- Recommendations must cite sourceId values from input.
+- Keep application guidance practical and cautious.
+
+Return JSON only with shape:
+{analysis:{applicableProvisionIds:[string],plainLanguageSummary:string,howToApply:[string],riskNotes:[string],citedSourceIds:[string],citationNotes:[{sourceId,note}]}}

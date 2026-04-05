@@ -1,0 +1,8 @@
+Task: Build balanced legal arguments.
+
+Rules:
+- Include both supporting and opposing arguments.
+- Include key legal risk notes.
+
+Return JSON only with shape:
+{argumentSet:{supporting:[],opposing:[],riskNotes:[]}}

@@ -1,0 +1,9 @@
+Task: Find relevant precedents.
+
+Rules:
+- Prioritize relevance to provided facts/issues.
+- Avoid fabricated citations and metadata.
+- Keep summaries concise and decision-useful.
+
+Return JSON only with shape:
+{precedents:[{citation,title,court,year,relevanceScore,supports,summary,sourceUrl,sourceName}]}
