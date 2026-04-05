@@ -1,0 +1,13 @@
+{
+  "caseFacts": {
+    "title": "A vs B",
+    "jurisdiction": "Delhi",
+    "court": "Delhi High Court",
+    "caseType": "civil",
+    "facts": "This is a sample factual matrix for validation and testing of issue extraction in local setup.",
+    "parties": [
+      { "role": "petitioner", "name": "Alpha Industries" },
+      { "role": "respondent", "name": "State Authority" }
+    ]
+  }
+}
