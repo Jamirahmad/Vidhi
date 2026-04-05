@@ -1,217 +1,135 @@
-# 🚀 Vidhi – Intelligent Agent System for Structured Knowledge & Prompt Orchestration
+# Vidhi Monorepo
 
-## 📌 Overview
+Vidhi is an AI-assisted legal workflow platform with:
+- a **FastAPI backend** for agent orchestration, knowledge retrieval, and guarded generation,
+- a **TypeScript frontend** for user interaction,
+- and **shared contracts** for typed interoperability.
 
-**Vidhi** is an enterprise-grade AI agent backend designed to orchestrate **modular prompts, knowledge retrieval, and service workflows** in a scalable and production-ready architecture.
+## Architecture at a glance
 
-It enables:
-
-* Structured prompt engineering
-* Knowledge-driven responses
-* Extensible agent workflows
-* Strong contract-based communication (TypeScript)
-
----
-
-## 🧠 Key Capabilities
-
-* 🔹 **Modular Prompt Architecture** – Reusable, composable prompt components
-* 🔹 **Knowledge Integration Layer** – Supports embeddings & contextual retrieval
-* 🔹 **Service-Oriented Design** – Clean orchestration via service layer
-* 🔹 **Contract-Driven Development** – Shared schemas across systems
-* 🔹 **Extensible Agent Framework** – Easily add new workflows/modules
-
----
-
-## 🏗️ System Architecture
-
-```
-Client / API Layer
-        │
-        ▼
-   Service Layer  ─────────────┐
-        │                      │
-        ▼                      ▼
- Prompt Builder          Knowledge Layer
- (Modular System)        (Embeddings/Data)
-        │                      │
-        └──────────────┬───────┘
-                       ▼
-                Response Engine
+```mermaid
+flowchart TD
+    UI[Frontend - Vite/React] --> API[FastAPI API Layer]
+    API --> AGENTS[Prompt Service / Agent Endpoints]
+    API --> KB[Knowledge Service]
+    KB --> STORE[(Vector/Document Store)]
+    AGENTS --> LLM[LLM Provider]
+    API --> OBS[Health + Logging + Feedback]
 ```
 
-### 🔍 Core Components
+## Repository structure
 
-| Component     | Description                                    |
-| ------------- | ---------------------------------------------- |
-| **Services**  | Orchestrates workflows and business logic      |
-| **Prompts**   | Modular prompt templates and builders          |
-| **Knowledge** | Handles embeddings, retrieval, and context     |
-| **Contracts** | Shared TypeScript schemas for interoperability |
-
----
-
-## 📁 Project Structure
-
-```
-backend/
-  app/
-    knowledge/        # Knowledge retrieval & embeddings
-    prompts/          # Prompt modules and builder system
-    services/         # Business logic & orchestration
-    main.py           # Entry point
-
-packages/
-  contracts/          # Shared TypeScript interfaces
-```
-
----
-
-## ⚙️ Setup Instructions
-
-### 1. Clone the Repository
-
-```
-git clone <your-repo-url>
-cd vidhi
+```text
+.
+├── backend/
+│   ├── app/
+│   │   ├── knowledge/          # ingestion, embeddings, retrieval
+│   │   ├── prompts/            # core and module prompts + builder
+│   │   ├── services/           # orchestration services
+│   │   ├── main.py             # FastAPI app + routes
+│   │   ├── request_models.py   # validated request DTOs
+│   │   └── response_models.py  # response contracts
+│   ├── data/knowledge/         # local seed knowledge
+│   ├── requirements.txt
+│   └── smoke_test.py
+├── docs/architecture/          # architecture and deployment docs
+├── frontend/                   # Vite + React app
+├── packages/contracts/         # shared TypeScript contracts
+├── tests/
+│   ├── integration/
+│   └── unit/
+├── scripts/                    # local backend helper scripts (PowerShell)
+└── .github/workflows/ci.yml
 ```
 
-### 2. Setup Environment
+## Quick start
 
-```
+### 1) Prerequisites
+- Python 3.10+
+- Node.js 20+
+- npm 10+
+
+### 2) Clone and configure
+
+```bash
+git clone <repo-url>
+cd Vidhi
 cp .env.example .env
 ```
 
-Update environment variables as needed.
+### 3) Install dependencies
 
----
+Backend:
 
-### 3. Install Dependencies
-
-**Python backend**
-
-```
-pip install -r requirements.txt
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+pip install -r backend/requirements.txt
 ```
 
-**TypeScript contracts**
+Frontend + workspace packages:
 
-```
-cd packages/contracts
+```bash
 npm install
 ```
 
----
+### 4) Run services
 
-### 4. Run the Application
+Backend API:
 
-```
-python backend/app/main.py
-```
-
----
-
-## 🔌 API Usage (Example)
-
-```
-POST /generate
+```bash
+uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Request**
+Frontend:
 
-```json
-{
-  "input": "Sample query",
-  "context": {}
-}
+```bash
+npm run dev
 ```
 
-**Response**
+## API usage examples
 
-```json
-{
-  "output": "Generated response"
-}
+### Health check
+
+```bash
+curl http://localhost:8000/api/v1/health
 ```
 
----
+### Issue Spotter agent
 
-## 🧩 Prompt System Design
+```bash
+curl -X POST http://localhost:8000/api/v1/agents/issue-spotter \
+  -H "Content-Type: application/json" \
+  -d @backend/sample-issue-input.json
+```
 
-Vidhi uses a **layered prompt architecture**:
+### Knowledge search
 
-* `core/` → Base system prompts
-* `modules/` → Feature-specific prompts
-* `builder.py` → Dynamic composition engine
-* `registry.py` → Central prompt management
+```bash
+curl "http://localhost:8000/api/v1/knowledge-base/search?q=bail&k=5"
+```
 
-### Benefits:
+## Testing
 
-* Reusability
-* Consistency
-* Safety control
-* Easy experimentation
+Run Python tests:
 
----
+```bash
+python -m pytest -q
+```
 
-## 🧪 Testing (Planned)
+## Documentation
 
-* Unit tests for services
-* Prompt output validation
-* Integration tests for workflows
+- System architecture: `docs/architecture/system_architecture.md`
+- Sequence flow: `docs/architecture/sequence_diagram.md`
+- Multi-agent architecture: `docs/architecture/multi_agent_architecture.md`
+- Deployment references:
+  - `docs/architecture/Docker_Infrastructure_architecture.md`
+  - `docs/architecture/OnPrem_Deployment_diagram.md`
 
----
+## CI
 
-## 🔄 CI/CD (Planned)
+GitHub Actions CI lives at `.github/workflows/ci.yml` and is intended to run lint, tests, and builds on pull requests.
 
-* Linting & formatting checks
-* Automated test execution
-* Build validation
+## License
 
----
-
-## 🐳 Deployment (Planned)
-
-* Dockerized backend
-* Scalable deployment setup
-* Environment-based configurations
-
----
-
-## 🔐 Security Considerations
-
-* Environment-based configuration (.env)
-* No hardcoded secrets
-* Input validation via request models
-
----
-
-## 📈 Future Enhancements
-
-* Prompt versioning & evaluation framework
-* Multi-agent orchestration
-* Observability (logging, metrics)
-* Caching & performance optimization
-* Queue-based async processing
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome!
-Please follow standard coding practices and raise a PR with clear descriptions.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-## 👤 Author
-
-**Jamirahmad Mulla**
-Senior Manager | Solution Architect | AI/ML Enthusiast
-
----
+MIT — see `LICENSE`.
