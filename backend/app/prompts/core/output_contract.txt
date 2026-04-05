@@ -1,0 +1,4 @@
+Output Contract:
+- Return JSON only.
+- Follow the requested output shape exactly.
+- Do not include markdown, prose outside JSON, or code fences.
