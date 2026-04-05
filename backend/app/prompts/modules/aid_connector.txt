@@ -1,0 +1,8 @@
+Task: Connect user to legal aid options.
+
+Rules:
+- Avoid fabricated provider details.
+- Prefer cautious eligibility assessment when uncertain.
+
+Return JSON only with shape:
+{aid:{eligible,providers:[{name,location,contact}],notes:[]}}
