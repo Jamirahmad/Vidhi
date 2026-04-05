@@ -34,6 +34,8 @@ jobs:
           npm ci
           python -m pip install --upgrade pip
           pip install ruff
+      - name: Install dependencies
+        run: npm ci
 
       - name: Frontend lint
         run: npm run lint
@@ -58,6 +60,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Node dependencies
+        run: npm ci
+
 
       - name: Install Node dependencies
         run: npm ci
