@@ -17,11 +17,25 @@ import uuid
 from collections import defaultdict, deque
 from io import BytesIO
 from pathlib import Path
+import re
+import time
+import uuid
+from collections import defaultdict, deque
+from io import BytesIO
+from pathlib import Path
 from threading import Lock
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from backend.app.error_handlers import HttpError, install_exception_handlers
+from backend.app.logging_config import configure_logging, get_logger, log_event
+from backend.app.request_models import (
+    FeedbackSubmitRequest,
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,6 +58,9 @@ from backend.app.request_models import (
     LiveSearchDrilldownRequest,
     LiveSearchRequest,
     ProvisionLookupRequest,
+)
+from backend.app.routes.system_routes import build_system_router
+from backend.app.response_models import (
 )
 from backend.app.routes.system_routes import build_system_router
 from backend.app.response_models import (
@@ -115,6 +132,8 @@ configure_logging()
 REQUEST_LOGGER = get_logger(REQUEST_LOGGER_NAME)
 configure_logging()
 REQUEST_LOGGER = get_logger(REQUEST_LOGGER_NAME)
+configure_logging()
+REQUEST_LOGGER = get_logger(REQUEST_LOGGER_NAME)
 
 RATE_LIMIT_STORE: Dict[str, deque[float]] = defaultdict(deque)
 RATE_LIMIT_LOCK = Lock()
@@ -148,6 +167,7 @@ def get_client_ip(request: Request) -> str:
     return "unknown"
 
 
+def extract_first_match(pattern: str, text: str) -> str:
 def extract_first_match(pattern: str, text: str) -> str:
 def extract_first_match(pattern: str, text: str) -> str:
     match = re.search(pattern, text or "", flags=re.IGNORECASE)
@@ -557,6 +577,8 @@ app.add_middleware(
 async def rate_limiter_middleware(request: Request, call_next):
 @app.middleware("http")
 async def rate_limiter_middleware(request: Request, call_next):
+@app.middleware("http")
+async def rate_limiter_middleware(request: Request, call_next):
     if not RATE_LIMIT_ENABLED or request.url.path in RATE_LIMIT_BYPASS_PATHS:
         return await call_next(request)
 
@@ -621,6 +643,20 @@ async def request_logger_middleware(request: Request, call_next):
         client_ip=get_client_ip(request),
     )
     return response
+    response.headers.setdefault("X-Request-Id", request_id)
+    response.headers.setdefault("X-Backend-Latency-Ms", f"{duration_ms:.2f}")
+    log_event(
+        REQUEST_LOGGER,
+        logging.INFO,
+        "http_request",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=round(duration_ms, 2),
+        client_ip=get_client_ip(request),
+    )
+    return response
 
 
 @app.middleware("http")
@@ -635,6 +671,20 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
+app.state.request_logger = REQUEST_LOGGER
+install_exception_handlers(app)
+
+@app.on_event("startup")
+async def prewarm_popular_queries() -> None:
+    if KNOWLEDGE_SERVICE is None:
+        return
+    if not PREWARM_ENABLED and not PREWARM_PROVISION_ENABLED:
+        return
+    for query in PREWARM_QUERIES[:6]:
+        cache_key_live = json.dumps(
+            {"endpoint": "live-search", "query": query, "intent": "case_law", "limit": 5},
+            sort_keys=True,
+        )
 app.state.request_logger = REQUEST_LOGGER
 install_exception_handlers(app)
 
@@ -724,6 +774,12 @@ async def prewarm_popular_queries() -> None:
 _FEEDBACK_STORE: List[Dict[str, Any]] = []
 
 
+_FEEDBACK_STORE: List[Dict[str, Any]] = []
+
+
+async def _health_handler() -> HealthResponse:
+    return {
+        "status": "ok",
 async def _health_handler() -> HealthResponse:
     return {
         "status": "ok",
@@ -754,6 +810,38 @@ async def health() -> HealthResponse:
                 "maxRequests": RATE_LIMIT_MAX_REQUESTS,
                 "bypassPaths": sorted(list(RATE_LIMIT_BYPASS_PATHS)),
             },
+        },
+    }
+
+
+async def _feedback_submit_handler(payload_dict: Dict[str, Any]) -> FeedbackSubmitResponse:
+    payload = FeedbackSubmitRequest.model_validate(payload_dict)
+    normalized_payload = payload.model_dump(mode="python")
+    item = {
+        "id": str(uuid.uuid4()),
+        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "payload": normalized_payload,
+    }
+    _FEEDBACK_STORE.append(item)
+    return {"status": "received", "feedbackId": item["id"]}
+
+
+async def _feedback_list_handler(limit: int) -> FeedbackListResponse:
+    items = _FEEDBACK_STORE[-limit:]
+    return {"count": len(items), "items": items}
+
+
+app.include_router(
+    build_system_router(
+        health_handler=_health_handler,
+        feedback_submit_handler=_feedback_submit_handler,
+        feedback_list_handler=_feedback_list_handler,
+    )
+)
+
+
+@app.get("/api/v1/knowledge-base/search")
+async def knowledge_search(q: str = Query(..., min_length=2), limit: int = Query(12, ge=1, le=50)) -> List[KnowledgeSearchItemResponse]:
         },
     }
 
