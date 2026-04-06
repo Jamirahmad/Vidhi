@@ -1,0 +1,20 @@
+{
+  "manifestVersion": "1.0.0",
+  "core": {
+    "system.txt": {"version": "1.0.0", "owner": "platform", "lastReviewed": "2026-04-06"},
+    "safety.txt": {"version": "1.0.0", "owner": "platform", "lastReviewed": "2026-04-06"},
+    "output_contract.txt": {"version": "1.0.0", "owner": "platform", "lastReviewed": "2026-04-06"}
+  },
+  "modules": {
+    "knowledge_drilldown": {"file": "knowledge_drilldown.txt", "version": "1.0.0", "owner": "research", "lastReviewed": "2026-04-06"},
+    "provision_lookup": {"file": "provision_lookup.txt", "version": "1.0.0", "owner": "research", "lastReviewed": "2026-04-06"},
+    "issue_spotter": {"file": "issue_spotter.txt", "version": "1.0.0", "owner": "legal-ai", "lastReviewed": "2026-04-06"},
+    "case_finder": {"file": "case_finder.txt", "version": "1.0.0", "owner": "legal-ai", "lastReviewed": "2026-04-06"},
+    "limitation_checker": {"file": "limitation_checker.txt", "version": "1.0.0", "owner": "legal-ai", "lastReviewed": "2026-04-06"},
+    "argument_builder": {"file": "argument_builder.txt", "version": "1.0.0", "owner": "legal-ai", "lastReviewed": "2026-04-06"},
+    "doc_composer": {"file": "doc_composer.txt", "version": "1.0.0", "owner": "legal-ai", "lastReviewed": "2026-04-06"},
+    "compliance_guard": {"file": "compliance_guard.txt", "version": "1.0.0", "owner": "policy", "lastReviewed": "2026-04-06"},
+    "aid_connector": {"file": "aid_connector.txt", "version": "1.0.0", "owner": "policy", "lastReviewed": "2026-04-06"},
+    "judgment_summarizer": {"file": "judgment_summarizer.txt", "version": "1.0.0", "owner": "legal-ai", "lastReviewed": "2026-04-06"}
+  }
+}

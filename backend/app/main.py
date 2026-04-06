@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from backend.app.config import load_app_config
 from backend.app.error_handlers import HttpError, install_exception_handlers
 from backend.app.logging_config import configure_logging, get_logger, log_event
+from backend.app.prompts.registry import get_prompt_manifest_version, get_task_prompt_versions
 from backend.app.request_models import (
     FeedbackSubmitRequest,
     GenericAgentRequest,
@@ -41,6 +42,7 @@ from backend.app.response_models import (
     LiveSearchDrilldownResponse,
     LiveSearchResponse,
     MetricsResponse,
+    PromptVersionResponse,
     ProvisionLookupResponse,
     RefreshResponse,
 )
@@ -148,6 +150,7 @@ METRICS_STATUS_BUCKETS: Dict[str, int] = {
     "5xx": 0,
 }
 METRICS_ROUTE_STATS: Dict[str, Dict[str, float]] = defaultdict(lambda: {"requests": 0.0, "total_duration_ms": 0.0})
+
 PROVISION_URL_WARM_LIMIT = max(1, int(os.getenv("VIDHI_PROVISION_URL_WARM_LIMIT", "4")))
 
 def get_client_ip(request: Request) -> str:
@@ -772,6 +775,13 @@ async def metrics() -> MetricsResponse:
         "routes": route_stats,
     }
 
+@app.get("/api/v1/prompts/versions", response_model=PromptVersionResponse)
+async def prompt_versions() -> PromptVersionResponse:
+    return {
+        "manifestVersion": get_prompt_manifest_version(),
+        "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+        "taskPromptVersions": get_task_prompt_versions(),
+    }
 
 async def _feedback_submit_handler(payload_dict: Dict[str, Any]) -> FeedbackSubmitResponse:
     payload = FeedbackSubmitRequest.model_validate(payload_dict)

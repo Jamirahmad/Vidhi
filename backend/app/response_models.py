@@ -56,6 +56,11 @@ class MetricsResponse(BaseModel):
     statusBuckets: MetricsStatusBucketsResponse
     routes: Dict[str, MetricsRouteStatResponse] = Field(default_factory=dict)
 
+class PromptVersionResponse(BaseModel):
+    manifestVersion: str
+    systemPromptStackVersion: str
+    taskPromptVersions: Dict[str, str] = Field(default_factory=dict)
+
 
 class KnowledgeSearchItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -168,6 +173,4 @@ class GenericDictResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 class GenericListItemResponse(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
     model_config = ConfigDict(extra="allow")

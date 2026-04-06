@@ -76,6 +76,17 @@ Each agent endpoint under `/api/v1/agents/*` calls `llm_json(task_name, payload)
 
 ## 5) Operational recommendations (next maturity step)
 
+Vidhi now includes a prompt version-control baseline:
+
+1. Prompt metadata is tracked in `backend/app/prompts/manifest.json` (module file, `version`, `owner`, `lastReviewed`).
+2. Runtime exposes prompt versions through `GET /api/v1/prompts/versions`.
+3. Prompt registry validates task-file mapping against manifest metadata.
+
+Next maturity upgrades:
+
+1. Add automated checksum validation for prompt file changes in CI.
+2. Extend golden tests with policy assertions for prohibited content.
+3. Track prompt revisions in dedicated release notes/changelog entries.
 To improve enterprise readiness further:
 
 1. Add prompt version metadata (e.g., `version`, `owner`, `last_reviewed`) per module.
@@ -87,6 +98,7 @@ To improve enterprise readiness further:
 
 - `backend/app/prompts/builder.py`
 - `backend/app/prompts/registry.py`
+- `backend/app/prompts/manifest.json`
 - `backend/app/prompts/types.py`
 - `backend/app/services/prompt_service.py`
 - `backend/app/main.py`

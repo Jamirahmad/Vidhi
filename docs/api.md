@@ -81,6 +81,21 @@ Returns in-memory monitoring counters and per-route latency summaries.
 }
 ```
 
+### `GET /api/v1/prompts/versions`
+Returns prompt manifest and module version mapping used by runtime prompt resolution.
+
+**Sample response**
+```json
+{
+  "manifestVersion": "1.0.0",
+  "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+  "taskPromptVersions": {
+    "issue_spotter": "1.0.0",
+    "case_finder": "1.0.0"
+  }
+}
+```
+
 ### `POST /api/v1/feedback`
 Stores arbitrary feedback payload.
 
