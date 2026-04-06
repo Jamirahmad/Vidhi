@@ -56,12 +56,10 @@ class MetricsResponse(BaseModel):
     statusBuckets: MetricsStatusBucketsResponse
     routes: Dict[str, MetricsRouteStatResponse] = Field(default_factory=dict)
 
-
 class PromptVersionResponse(BaseModel):
     manifestVersion: str
     systemPromptStackVersion: str
     taskPromptVersions: Dict[str, str] = Field(default_factory=dict)
-
 
 class QueueStatsResponse(BaseModel):
     timestamp: str
@@ -70,14 +68,11 @@ class QueueStatsResponse(BaseModel):
     completed: int
     failed: int
 
-
 class KnowledgeSearchItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-
 class RefreshResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
-
 
 class LiveSearchResultItemResponse(BaseModel):
     id: str
@@ -165,26 +160,22 @@ class ProvisionLookupResponse(BaseModel):
     grounding: Optional[Dict[str, Any]] = None
     retrievalDiagnostics: Optional[ProvisionRetrievalDiagnosticsResponse] = None
 
-
 class FeedbackItemResponse(BaseModel):
     id: str
     createdAt: str
     payload: Dict[str, Any]
 
-
 class FeedbackSubmitResponse(BaseModel):
     status: str
     feedbackId: str
-
 
 class FeedbackListResponse(BaseModel):
     count: int
     items: List[FeedbackItemResponse] = Field(default_factory=list)
 
-
 class GenericDictResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-
 class GenericListItemResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
     model_config = ConfigDict(extra="allow")
