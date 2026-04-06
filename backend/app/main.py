@@ -25,6 +25,7 @@ from backend.app.error_handlers import HttpError, install_exception_handlers
 from backend.app.guardrails import apply_output_guardrails
 from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.prompts.registry import get_prompt_manifest_version, get_task_prompt_versions
+from backend.app.reliability import build_fallback_task_prompt, compute_backoff_seconds, is_retryable_status, should_retry_with_fallback
 from backend.app.request_models import (
     FeedbackSubmitRequest,
     GenericAgentRequest,
@@ -74,6 +75,9 @@ OPENROUTER_SITE_URL = APP_CONFIG.openrouter_site_url
 OPENROUTER_APP_NAME = APP_CONFIG.openrouter_app_name
 OPENROUTER_CHAT_URL = APP_CONFIG.openrouter_chat_url
 OPENROUTER_MAX_TOKENS = APP_CONFIG.openrouter_max_tokens
+LLM_MAX_RETRIES = APP_CONFIG.llm_max_retries
+LLM_RETRY_BACKOFF_MS = APP_CONFIG.llm_retry_backoff_ms
+LLM_FALLBACK_ENABLED = APP_CONFIG.llm_fallback_enabled
 
 REQUEST_LOGGER_NAME = "vidhi.request"
 APP_VERSION = resolve_app_version(ROOT_DIR)
@@ -543,6 +547,77 @@ async def llm_json(task: str, payload: Dict[str, Any] | Any) -> Dict[str, Any]:
         "X-Title": OPENROUTER_APP_NAME,
     }
 
+    async def _call_provider(prompt_text: str) -> Dict[str, Any]:
+        request_payload = {
+            "model": MODEL,
+            "temperature": 0.2,
+            "max_tokens": OPENROUTER_MAX_TOKENS,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "task": prompt_text,
+                            "payload": normalized_payload,
+                        }
+                    ),
+                },
+            ],
+        }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for attempt_index in range(LLM_MAX_RETRIES + 1):
+                try:
+                    response = await client.post(OPENROUTER_CHAT_URL, headers=headers, json=request_payload)
+                except httpx.HTTPError as exc:
+                    if attempt_index < LLM_MAX_RETRIES:
+                        await asyncio.sleep(compute_backoff_seconds(attempt_index, LLM_RETRY_BACKOFF_MS))
+                        continue
+                    raise HttpError(
+                        status=502,
+                        code="LLM_PROVIDER_UNREACHABLE",
+                        message=f"Failed to connect to provider: {exc}",
+                        user_message="AI provider is temporarily unavailable. Please retry.",
+                    )
+
+                if response.status_code >= 300:
+                    if attempt_index < LLM_MAX_RETRIES and is_retryable_status(response.status_code):
+                        await asyncio.sleep(compute_backoff_seconds(attempt_index, LLM_RETRY_BACKOFF_MS))
+                        continue
+                    raise normalize_provider_error(response.status_code, response.text)
+                return response.json()
+
+        raise HttpError(
+            status=502,
+            code="LLM_PROVIDER_RETRY_EXHAUSTED",
+            message="Provider retries were exhausted without a successful response",
+            user_message="AI provider is temporarily unavailable. Please retry.",
+        )
+
+    async def _parse_and_guard(data: Dict[str, Any], task_name: str) -> Dict[str, Any]:
+        content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "{}")
+        try:
+            parsed_content = json.loads(content)
+        except json.JSONDecodeError:
+            raise HttpError(
+                status=502,
+                code="INVALID_PROVIDER_RESPONSE",
+                message="LLM returned non-JSON content",
+                user_message="AI response format was invalid. Please retry.",
+            )
+        return apply_output_guardrails(task=task_name, payload=parsed_content)
+
+    try:
+        primary_data = await _call_provider(task_prompt)
+        return await _parse_and_guard(primary_data, task)
+    except HttpError as exc:
+        if not LLM_FALLBACK_ENABLED or not should_retry_with_fallback(exc.code):
+            raise
+        fallback_prompt = build_fallback_task_prompt(task_prompt)
+        fallback_data = await _call_provider(fallback_prompt)
+        return await _parse_and_guard(fallback_data, task)
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(OPENROUTER_CHAT_URL, headers=headers, json=request_payload)
 
@@ -723,6 +798,43 @@ async def _health_handler() -> HealthResponse:
                 "bypassPaths": sorted(list(RATE_LIMIT_BYPASS_PATHS)),
             },
         },
+    }
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
+@app.get("/api/v1/prompts/versions", response_model=PromptVersionResponse)
+async def prompt_versions() -> PromptVersionResponse:
+    return {
+        "manifestVersion": get_prompt_manifest_version(),
+        "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+        "taskPromptVersions": get_task_prompt_versions(),
+    }
+
+
     }
 
 @app.get("/api/v1/metrics", response_model=MetricsResponse)

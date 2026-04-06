@@ -89,6 +89,7 @@ Next maturity upgrades:
 1. Add automated checksum validation for prompt file changes in CI.
 2. Extend golden tests with policy assertions for prohibited content.
 3. Track prompt revisions in dedicated release notes/changelog entries.
+
 To improve enterprise readiness further:
 
 1. Add prompt version metadata (e.g., `version`, `owner`, `last_reviewed`) per module.

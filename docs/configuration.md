@@ -28,6 +28,7 @@ Starter template: `backend/config/runtime.example.json`.
 - `port` (`PORT`)
 - `model` (`VIDHI_LLM_MODEL`, fallback `VIDHI_OPENAI_MODEL`)
 - `openrouter_*` provider settings
+- LLM reliability settings (`llm_max_retries`, `llm_retry_backoff_ms`, `llm_fallback_enabled`)
 - rate limiting controls (`rate_limit_*`)
 - cache settings (`response_cache_*`)
 - prewarm settings (`prewarm_*`)

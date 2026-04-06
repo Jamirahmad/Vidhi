@@ -16,6 +16,9 @@ class AppConfig:
     openrouter_app_name: str
     openrouter_chat_url: str
     openrouter_max_tokens: int
+    llm_max_retries: int
+    llm_retry_backoff_ms: int
+    llm_fallback_enabled: bool
     rate_limit_enabled: bool
     rate_limit_window_s: int
     rate_limit_max_requests: int
@@ -109,6 +112,9 @@ def load_app_config(root_dir: Path) -> AppConfig:
         openrouter_app_name=str(_get(source, "openrouter_app_name", "OPENROUTER_APP_NAME", "Vidhi")),
         openrouter_chat_url=str(_get(source, "openrouter_chat_url", "OPENROUTER_CHAT_URL", "https://openrouter.ai/api/v1/chat/completions")),
         openrouter_max_tokens=max(1, _to_int(_get(source, "openrouter_max_tokens", "OPENROUTER_MAX_TOKENS", 1800), 1800)),
+        llm_max_retries=max(0, _to_int(_get(source, "llm_max_retries", "VIDHI_LLM_MAX_RETRIES", 2), 2)),
+        llm_retry_backoff_ms=max(50, _to_int(_get(source, "llm_retry_backoff_ms", "VIDHI_LLM_RETRY_BACKOFF_MS", 300), 300)),
+        llm_fallback_enabled=_to_bool(_get(source, "llm_fallback_enabled", "VIDHI_LLM_FALLBACK_ENABLED", True), True),
         rate_limit_enabled=_to_bool(_get(source, "rate_limit_enabled", "VIDHI_RATE_LIMIT_ENABLED", True), True),
         rate_limit_window_s=max(1, _to_int(_get(source, "rate_limit_window_s", "VIDHI_RATE_LIMIT_WINDOW_S", 60), 60)),
         rate_limit_max_requests=max(1, _to_int(_get(source, "rate_limit_max_requests", "VIDHI_RATE_LIMIT_MAX_REQUESTS", 120), 120)),
