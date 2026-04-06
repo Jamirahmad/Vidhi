@@ -134,6 +134,11 @@ python -m pytest -q
 
 GitHub Actions CI lives at `.github/workflows/ci.yml` and is intended to run lint, tests, and builds on pull requests.
 
+## Community and governance
+
+- Contribution guide: `CONTRIBUTING.md`
+- Code of Conduct: `CODE_OF_CONDUCT.md`
+
 ## License
 
 MIT — see `LICENSE`.

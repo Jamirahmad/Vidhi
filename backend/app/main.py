@@ -279,11 +279,8 @@ def _schedule_cache_refresh(task_key: str, builder: Callable[[], Awaitable[Any]]
     BACKGROUND_TASK_QUEUE.submit(f"cache-refresh:{task_key}", _runner)
     asyncio.create_task(_runner())
 
-
-
 def _provision_url_cache_key(title: str, source_url: str) -> str:
     return f"{(title or '').strip()}|{(source_url or '').strip()}"
-
 
 def _get_cached_precise_provision_url(title: str, source_url: str) -> str:
     key = _provision_url_cache_key(title=title, source_url=source_url)
@@ -802,6 +799,48 @@ async def _health_handler() -> HealthResponse:
                 "bypassPaths": sorted(list(RATE_LIMIT_BYPASS_PATHS)),
             },
         },
+    }
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
+@app.get("/api/v1/prompts/versions", response_model=PromptVersionResponse)
+async def prompt_versions() -> PromptVersionResponse:
+    return {
+        "manifestVersion": get_prompt_manifest_version(),
+        "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+        "taskPromptVersions": get_task_prompt_versions(),
+    }
+
+
+@app.get("/api/v1/queue/stats", response_model=QueueStatsResponse)
+async def queue_stats() -> QueueStatsResponse:
+    return BACKGROUND_TASK_QUEUE.snapshot()
+
+
     }
 
 @app.get("/api/v1/metrics", response_model=MetricsResponse)
