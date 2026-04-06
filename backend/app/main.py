@@ -150,7 +150,6 @@ METRICS_STATUS_BUCKETS: Dict[str, int] = {
 METRICS_ROUTE_STATS: Dict[str, Dict[str, float]] = defaultdict(lambda: {"requests": 0.0, "total_duration_ms": 0.0})
 PROVISION_URL_WARM_LIMIT = max(1, int(os.getenv("VIDHI_PROVISION_URL_WARM_LIMIT", "4")))
 
-
 def get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
@@ -718,6 +717,34 @@ async def _health_handler() -> HealthResponse:
                 "bypassPaths": sorted(list(RATE_LIMIT_BYPASS_PATHS)),
             },
         },
+    }
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
     }
 
 @app.get("/api/v1/metrics", response_model=MetricsResponse)

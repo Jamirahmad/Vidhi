@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { workflowCreateResponseSchema, workflowRequestSchema, workflowStatusSchema } from "./workflow";
 import { workflowCreateResponseSchema, workflowRequestSchema } from "./workflow";
 
 describe("workflowRequestSchema", () => {
@@ -33,6 +34,22 @@ describe("workflowRequestSchema", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("rejects unknown fields to keep strict request contracts", () => {
+    const result = workflowRequestSchema.safeParse({
+      caseFacts: {
+        title: "Cheque Dishonor Complaint",
+        jurisdiction: "IN",
+        court: "Metropolitan Magistrate",
+        caseType: "criminal",
+        facts: "A cheque was issued and returned due to insufficient funds after statutory notice.",
+        parties: [{ role: "petitioner", name: "A Kumar" }],
+      },
+      extra: "not-allowed",
+    });
+
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("workflowCreateResponseSchema", () => {
@@ -43,5 +60,38 @@ describe("workflowCreateResponseSchema", () => {
     });
 
     expect(parsed.status).toBe("queued");
+  });
+});
+
+describe("workflowStatusSchema", () => {
+  it("accepts completed payload with result object", () => {
+    const parsed = workflowStatusSchema.parse({
+      jobId: "job-123",
+      status: "completed",
+      result: {
+        summary: "Done",
+      },
+    });
+
+    expect(parsed.status).toBe("completed");
+    expect(parsed.progress).toBe(100);
+  });
+
+  it("rejects completed payload without result", () => {
+    const result = workflowStatusSchema.safeParse({
+      jobId: "job-123",
+      status: "completed",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects failed payload without error", () => {
+    const result = workflowStatusSchema.safeParse({
+      jobId: "job-123",
+      status: "failed",
+    });
+
+    expect(result.success).toBe(false);
   });
 });
