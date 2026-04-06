@@ -37,6 +37,26 @@ class HealthResponse(BaseModel):
     middleware: HealthMiddlewareResponse
 
 
+class MetricsStatusBucketsResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class MetricsRouteStatResponse(BaseModel):
+    requests: int
+    avgDurationMs: float
+
+
+class MetricsResponse(BaseModel):
+    status: str
+    appVersion: str
+    processStartTime: str
+    uptimeSeconds: int
+    totalRequests: int
+    totalErrors: int
+    statusBuckets: MetricsStatusBucketsResponse
+    routes: Dict[str, MetricsRouteStatResponse] = Field(default_factory=dict)
+
+
 class KnowledgeSearchItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -131,28 +151,21 @@ class ProvisionLookupResponse(BaseModel):
     grounding: Optional[Dict[str, Any]] = None
     retrievalDiagnostics: Optional[ProvisionRetrievalDiagnosticsResponse] = None
 
-
 class FeedbackItemResponse(BaseModel):
     id: str
     createdAt: str
     payload: Dict[str, Any]
 
-
 class FeedbackSubmitResponse(BaseModel):
     status: str
     feedbackId: str
-
 
 class FeedbackListResponse(BaseModel):
     count: int
     items: List[FeedbackItemResponse] = Field(default_factory=list)
 
-
 class GenericDictResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-
 class GenericListItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
-
-

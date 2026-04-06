@@ -29,6 +29,7 @@ Returns backend readiness, model/provider metadata, middleware flags, and knowle
 ```json
 {
   "status": "ok",
+  "appVersion": "0.1.0",
   "provider": "openrouter",
   "model": "openai/gpt-4.1-mini",
   "apiKeyConfigured": true,
@@ -48,6 +49,33 @@ Returns backend readiness, model/provider metadata, middleware flags, and knowle
       "windowSeconds": 60,
       "maxRequests": 120,
       "bypassPaths": ["/api/v1/health"]
+    }
+  }
+}
+```
+
+### `GET /api/v1/metrics`
+Returns in-memory monitoring counters and per-route latency summaries.
+
+**Sample response**
+```json
+{
+  "status": "ok",
+  "appVersion": "0.1.0",
+  "processStartTime": "2026-04-06T00:00:00Z",
+  "uptimeSeconds": 42,
+  "totalRequests": 18,
+  "totalErrors": 1,
+  "statusBuckets": {
+    "2xx": 17,
+    "3xx": 0,
+    "4xx": 1,
+    "5xx": 0
+  },
+  "routes": {
+    "/api/v1/health": {
+      "requests": 5,
+      "avgDurationMs": 2.21
     }
   }
 }

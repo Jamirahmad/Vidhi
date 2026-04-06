@@ -156,6 +156,16 @@ jobs:
       - name: Run frontend tests
         run: npm --prefix frontend run test
 
+
+      - name: Run backend tests
+        run: python -m pytest -q
+
+      - name: Run contracts tests
+        run: npm --prefix packages/contracts run test
+
+      - name: Run frontend tests
+        run: npm --prefix frontend run test
+
   build:
     name: Build
     runs-on: ubuntu-latest

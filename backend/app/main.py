@@ -1478,10 +1478,12 @@ from backend.app.response_models import (
     KnowledgeSearchItemResponse,
     LiveSearchDrilldownResponse,
     LiveSearchResponse,
+    MetricsResponse,
     ProvisionLookupResponse,
     RefreshResponse,
 )
 from backend.app.services.prompt_service import resolve_system_prompt, resolve_task_prompt
+from backend.app.versioning import resolve_app_version
 
 try:
     from backend.app.knowledge import KnowledgeService
@@ -1508,6 +1510,7 @@ OPENROUTER_CHAT_URL = os.getenv("OPENROUTER_CHAT_URL", "https://openrouter.ai/ap
 OPENROUTER_MAX_TOKENS = int(os.getenv("OPENROUTER_MAX_TOKENS", "1800"))
 
 REQUEST_LOGGER_NAME = "vidhi.request"
+APP_VERSION = resolve_app_version(ROOT_DIR)
 RATE_LIMIT_ENABLED = os.getenv("VIDHI_RATE_LIMIT_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
 RATE_LIMIT_WINDOW_S = max(1, int(os.getenv("VIDHI_RATE_LIMIT_WINDOW_S", "60")))
 RATE_LIMIT_MAX_REQUESTS = max(1, int(os.getenv("VIDHI_RATE_LIMIT_MAX_REQUESTS", "120")))
@@ -1559,6 +1562,17 @@ PROVISION_ANALYSIS_LOCK = Lock()
 PROVISION_URL_CACHE: Dict[str, str] = {}
 PROVISION_URL_CACHE_LOCK = Lock()
 PROVISION_URL_WARM_LIMIT = max(1, int(os.getenv("VIDHI_PROVISION_URL_WARM_LIMIT", "4")))
+PROCESS_START_TS = time.time()
+METRICS_LOCK = Lock()
+METRICS_TOTAL_REQUESTS = 0
+METRICS_TOTAL_ERRORS = 0
+METRICS_STATUS_BUCKETS: Dict[str, int] = {
+    "2xx": 0,
+    "3xx": 0,
+    "4xx": 0,
+    "5xx": 0,
+}
+METRICS_ROUTE_STATS: Dict[str, Dict[str, float]] = defaultdict(lambda: {"requests": 0.0, "total_duration_ms": 0.0})
 
 
 def get_client_ip(request: Request) -> str:
@@ -1974,6 +1988,7 @@ async def llm_json(task: str, payload: Dict[str, Any] | Any) -> Dict[str, Any]:
         )
 
 
+app = FastAPI(title="Vidhi Python Backend", version=APP_VERSION)
 app = FastAPI(title="Vidhi Python Backend", version="1.0.0")
 
 app.add_middleware(
@@ -2044,6 +2059,19 @@ async def request_logger_middleware(request: Request, call_next):
         duration_ms=round(duration_ms, 2),
         client_ip=get_client_ip(request),
     )
+
+    status_bucket = f"{response.status_code // 100}xx"
+    with METRICS_LOCK:
+        global METRICS_TOTAL_REQUESTS
+        global METRICS_TOTAL_ERRORS
+        METRICS_TOTAL_REQUESTS += 1
+        if response.status_code >= 400:
+            METRICS_TOTAL_ERRORS += 1
+        METRICS_STATUS_BUCKETS[status_bucket] = METRICS_STATUS_BUCKETS.get(status_bucket, 0) + 1
+        route_metric = METRICS_ROUTE_STATS[request.url.path]
+        route_metric["requests"] += 1.0
+        route_metric["total_duration_ms"] += float(duration_ms)
+
     return response
     response.headers.setdefault("X-Request-Id", request_id)
     response.headers.setdefault("X-Backend-Latency-Ms", f"{duration_ms:.2f}")
@@ -2249,6 +2277,14 @@ _FEEDBACK_STORE: List[Dict[str, Any]] = []
 async def _health_handler() -> HealthResponse:
     return {
         "status": "ok",
+        "provider": "openrouter",
+        "appVersion": APP_VERSION,
+_FEEDBACK_STORE: List[Dict[str, Any]] = []
+
+
+async def _health_handler() -> HealthResponse:
+    return {
+        "status": "ok",
 _FEEDBACK_STORE: List[Dict[str, Any]] = []
 
 
@@ -2426,8 +2462,34 @@ async def knowledge_search(q: str = Query(..., min_length=2), limit: int = Query
     }
 
 
-@app.post("/api/v1/feedback", response_model=FeedbackSubmitResponse)
-async def feedback_submit(payload: FeedbackSubmitRequest) -> FeedbackSubmitResponse:
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
+async def _feedback_submit_handler(payload_dict: Dict[str, Any]) -> FeedbackSubmitResponse:
+    payload = FeedbackSubmitRequest.model_validate(payload_dict)
     normalized_payload = payload.model_dump(mode="python")
     item = {
         "id": str(uuid.uuid4()),
@@ -2438,10 +2500,18 @@ async def feedback_submit(payload: FeedbackSubmitRequest) -> FeedbackSubmitRespo
     return {"status": "received", "feedbackId": item["id"]}
 
 
-@app.get("/api/v1/feedback", response_model=FeedbackListResponse)
-async def feedback_list(limit: int = Query(50, ge=1, le=200)) -> FeedbackListResponse:
+async def _feedback_list_handler(limit: int) -> FeedbackListResponse:
     items = _FEEDBACK_STORE[-limit:]
     return {"count": len(items), "items": items}
+
+
+app.include_router(
+    build_system_router(
+        health_handler=_health_handler,
+        feedback_submit_handler=_feedback_submit_handler,
+        feedback_list_handler=_feedback_list_handler,
+    )
+)
 
 
 @app.get("/api/v1/knowledge-base/search")
@@ -3076,42 +3146,3 @@ async def judgment_summarizer(file: UploadFile = File(...)) -> GenericDictRespon
     summary = out.get("summary", {}) if isinstance(out.get("summary", {}), dict) else {}
     summary["sourceFileName"] = file.filename or "judgment"
     return summary
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
