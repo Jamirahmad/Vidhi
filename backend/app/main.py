@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.request_models import (
     FeedbackSubmitRequest,
     GenericAgentRequest,
@@ -93,9 +94,8 @@ else:
     KNOWLEDGE_INIT_ERROR = KNOWLEDGE_IMPORT_ERROR
 
 
-REQUEST_LOGGER = logging.getLogger(REQUEST_LOGGER_NAME)
-if not REQUEST_LOGGER.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+configure_logging()
+REQUEST_LOGGER = get_logger(REQUEST_LOGGER_NAME)
 
 RATE_LIMIT_STORE: Dict[str, deque[float]] = defaultdict(deque)
 RATE_LIMIT_LOCK = Lock()
@@ -606,14 +606,16 @@ async def request_logger_middleware(request: Request, call_next):
 
     response.headers.setdefault("X-Request-Id", request_id)
     response.headers.setdefault("X-Backend-Latency-Ms", f"{duration_ms:.2f}")
-    REQUEST_LOGGER.info(
-        "request_id=%s method=%s path=%s status=%s duration_ms=%.2f ip=%s",
-        request_id,
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        get_client_ip(request),
+    log_event(
+        REQUEST_LOGGER,
+        logging.INFO,
+        "http_request",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=round(duration_ms, 2),
+        client_ip=get_client_ip(request),
     )
     return response
 
@@ -632,11 +634,25 @@ async def security_headers_middleware(request: Request, call_next):
 
 @app.exception_handler(HttpError)
 async def http_error_handler(_: Request, exc: HttpError) -> JSONResponse:
+    log_event(
+        REQUEST_LOGGER,
+        logging.WARNING,
+        "http_error",
+        code=exc.code,
+        status=exc.status,
+        message=exc.message,
+    )
     return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
 
 
 @app.exception_handler(Exception)
 async def generic_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    log_event(
+        REQUEST_LOGGER,
+        logging.ERROR,
+        "unhandled_exception",
+        error=str(exc),
+    )
     return JSONResponse(
         status_code=500,
         content={
