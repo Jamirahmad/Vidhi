@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { workflowCreateResponseSchema, workflowRequestSchema, workflowStatusSchema } from "./workflow";
+import { workflowCreateResponseSchema, workflowRequestSchema } from "./workflow";
 
 describe("workflowRequestSchema", () => {
   it("applies defaults for optional fields", () => {
