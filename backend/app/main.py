@@ -9,7 +9,6 @@ import re
 import time
 import uuid
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -21,6 +20,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from backend.app.error_handlers import HttpError, install_exception_handlers
+from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.request_models import (
     FeedbackSubmitRequest,
     GenericAgentRequest,
@@ -28,6 +29,7 @@ from backend.app.request_models import (
     LiveSearchRequest,
     ProvisionLookupRequest,
 )
+from backend.app.routes.system_routes import build_system_router
 from backend.app.response_models import (
     FeedbackListResponse,
     FeedbackSubmitResponse,
@@ -93,9 +95,8 @@ else:
     KNOWLEDGE_INIT_ERROR = KNOWLEDGE_IMPORT_ERROR
 
 
-REQUEST_LOGGER = logging.getLogger(REQUEST_LOGGER_NAME)
-if not REQUEST_LOGGER.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+configure_logging()
+REQUEST_LOGGER = get_logger(REQUEST_LOGGER_NAME)
 
 RATE_LIMIT_STORE: Dict[str, deque[float]] = defaultdict(deque)
 RATE_LIMIT_LOCK = Lock()
@@ -127,22 +128,6 @@ def get_client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
-
-
-@dataclass
-class HttpError(Exception):
-    status: int
-    code: str
-    message: str
-    user_message: str
-
-
-def http_error_payload(err: HttpError) -> Dict[str, Any]:
-    return {
-        "error": err.message,
-        "code": err.code,
-        "userMessage": err.user_message,
-    }
 
 
 def extract_first_match(pattern: str, text: str) -> str:
@@ -550,23 +535,6 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def exception_handler_middleware(request: Request, call_next):
-    try:
-        return await call_next(request)
-    except HttpError as exc:
-        return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
-    except Exception as exc:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": str(exc),
-                "code": "INTERNAL_ERROR",
-                "userMessage": "Something went wrong on the server. Please retry.",
-            },
-        )
-
-
-@app.middleware("http")
 async def rate_limiter_middleware(request: Request, call_next):
     if not RATE_LIMIT_ENABLED or request.url.path in RATE_LIMIT_BYPASS_PATHS:
         return await call_next(request)
@@ -606,14 +574,16 @@ async def request_logger_middleware(request: Request, call_next):
 
     response.headers.setdefault("X-Request-Id", request_id)
     response.headers.setdefault("X-Backend-Latency-Ms", f"{duration_ms:.2f}")
-    REQUEST_LOGGER.info(
-        "request_id=%s method=%s path=%s status=%s duration_ms=%.2f ip=%s",
-        request_id,
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        get_client_ip(request),
+    log_event(
+        REQUEST_LOGGER,
+        logging.INFO,
+        "http_request",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=round(duration_ms, 2),
+        client_ip=get_client_ip(request),
     )
     return response
 
@@ -630,23 +600,8 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
-@app.exception_handler(HttpError)
-async def http_error_handler(_: Request, exc: HttpError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
-
-
-@app.exception_handler(Exception)
-async def generic_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": str(exc),
-            "code": "INTERNAL_ERROR",
-            "userMessage": "Something went wrong on the server. Please retry.",
-        },
-    )
-
-
+app.state.request_logger = REQUEST_LOGGER
+install_exception_handlers(app)
 
 @app.on_event("startup")
 async def prewarm_popular_queries() -> None:
@@ -688,8 +643,7 @@ async def prewarm_popular_queries() -> None:
 _FEEDBACK_STORE: List[Dict[str, Any]] = []
 
 
-@app.get("/api/v1/health")
-async def health() -> HealthResponse:
+async def _health_handler() -> HealthResponse:
     return {
         "status": "ok",
         "provider": "openrouter",
@@ -716,8 +670,8 @@ async def health() -> HealthResponse:
     }
 
 
-@app.post("/api/v1/feedback", response_model=FeedbackSubmitResponse)
-async def feedback_submit(payload: FeedbackSubmitRequest) -> FeedbackSubmitResponse:
+async def _feedback_submit_handler(payload_dict: Dict[str, Any]) -> FeedbackSubmitResponse:
+    payload = FeedbackSubmitRequest.model_validate(payload_dict)
     normalized_payload = payload.model_dump(mode="python")
     item = {
         "id": str(uuid.uuid4()),
@@ -728,10 +682,18 @@ async def feedback_submit(payload: FeedbackSubmitRequest) -> FeedbackSubmitRespo
     return {"status": "received", "feedbackId": item["id"]}
 
 
-@app.get("/api/v1/feedback", response_model=FeedbackListResponse)
-async def feedback_list(limit: int = Query(50, ge=1, le=200)) -> FeedbackListResponse:
+async def _feedback_list_handler(limit: int) -> FeedbackListResponse:
     items = _FEEDBACK_STORE[-limit:]
     return {"count": len(items), "items": items}
+
+
+app.include_router(
+    build_system_router(
+        health_handler=_health_handler,
+        feedback_submit_handler=_feedback_submit_handler,
+        feedback_list_handler=_feedback_list_handler,
+    )
+)
 
 
 @app.get("/api/v1/knowledge-base/search")
