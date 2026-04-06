@@ -63,6 +63,8 @@ These controls bias the model toward deterministic, parseable responses.
 After provider response:
 
 - response content is parsed with `json.loads`,
+- `backend/app/guardrails.py` applies prompt-task output contract checks,
+- output text is filtered for unsafe patterns (prompt-leak attempts / script tags),
 - non-JSON provider output raises `INVALID_PROVIDER_RESPONSE`,
 - normalized error payloads are returned via centralized exception middleware.
 

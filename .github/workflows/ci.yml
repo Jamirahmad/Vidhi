@@ -104,7 +104,6 @@ jobs:
       - name: Run backend tests
         run: python -m pytest -q
 
-
         with:
           python-version: "3.11"
 

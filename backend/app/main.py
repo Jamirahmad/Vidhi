@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.app.config import load_app_config
 from backend.app.error_handlers import HttpError, install_exception_handlers
+from backend.app.guardrails import apply_output_guardrails
 from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.prompts.registry import get_prompt_manifest_version, get_task_prompt_versions
 from backend.app.request_models import (
@@ -552,6 +553,8 @@ async def llm_json(task: str, payload: Dict[str, Any] | Any) -> Dict[str, Any]:
     content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "{}")
 
     try:
+        parsed_content = json.loads(content)
+        return apply_output_guardrails(task=task, payload=parsed_content)
         return json.loads(content)
     except json.JSONDecodeError:
         raise HttpError(
@@ -782,6 +785,41 @@ async def prompt_versions() -> PromptVersionResponse:
         "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
         "taskPromptVersions": get_task_prompt_versions(),
     }
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
+@app.get("/api/v1/prompts/versions", response_model=PromptVersionResponse)
+async def prompt_versions() -> PromptVersionResponse:
+    return {
+        "manifestVersion": get_prompt_manifest_version(),
+        "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+        "taskPromptVersions": get_task_prompt_versions(),
+    }
+
 
 async def _feedback_submit_handler(payload_dict: Dict[str, Any]) -> FeedbackSubmitResponse:
     payload = FeedbackSubmitRequest.model_validate(payload_dict)
