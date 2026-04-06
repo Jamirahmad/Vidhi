@@ -21,6 +21,8 @@ from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.app.error_handlers import HttpError, install_exception_handlers
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.request_models import (
     FeedbackSubmitRequest,
@@ -601,6 +603,38 @@ async def security_headers_middleware(request: Request, call_next):
 
 app.state.request_logger = REQUEST_LOGGER
 install_exception_handlers(app)
+
+@app.exception_handler(HttpError)
+async def http_error_handler(_: Request, exc: HttpError) -> JSONResponse:
+    log_event(
+        REQUEST_LOGGER,
+        logging.WARNING,
+        "http_error",
+        code=exc.code,
+        status=exc.status,
+        message=exc.message,
+    )
+    return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
+
+
+@app.exception_handler(Exception)
+async def generic_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    log_event(
+        REQUEST_LOGGER,
+        logging.ERROR,
+        "unhandled_exception",
+        error=str(exc),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": str(exc),
+            "code": "INTERNAL_ERROR",
+            "userMessage": "Something went wrong on the server. Please retry.",
+        },
+    )
+
+
 
 @app.on_event("startup")
 async def prewarm_popular_queries() -> None:
