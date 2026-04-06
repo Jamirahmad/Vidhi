@@ -1,0 +1,19 @@
+{
+  "port": 8000,
+  "model": "openai/gpt-4.1-mini",
+  "openrouter_site_url": "http://localhost:5173",
+  "openrouter_app_name": "Vidhi",
+  "openrouter_chat_url": "https://openrouter.ai/api/v1/chat/completions",
+  "openrouter_max_tokens": 1800,
+  "rate_limit_enabled": true,
+  "rate_limit_window_s": 60,
+  "rate_limit_max_requests": 120,
+  "rate_limit_bypass_paths": ["/api/v1/health", "/api/v1/metrics"],
+  "response_cache_ttl_s": 300,
+  "response_cache_max_entries": 256,
+  "response_stale_ttl_s": 900,
+  "prewarm_queries": ["bail", "anticipatory bail", "section 420", "cheque bounce"],
+  "prewarm_enabled": false,
+  "prewarm_provision_enabled": false,
+  "provision_url_warm_limit": 4
+}
