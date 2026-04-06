@@ -27,6 +27,8 @@
         "lint:py": "ruff check backend tests",
         "lint:all": "npm run lint && npm run lint:py",
         "format": "npx prettier --write \"**/*.{md,json,yml,yaml,ts,tsx,js,jsx,css,html}\"",
+        "format:check": "npx prettier --check \"**/*.{md,json,yml,yaml,ts,tsx,js,jsx,css,html}\"",
+        "secrets:scan": "python scripts/check-no-secrets.py"
         "format:check": "npx prettier --check \"**/*.{md,json,yml,yaml,ts,tsx,js,jsx,css,html}\""
         "lint:all": "npm run lint && npm run lint:py"
     }
