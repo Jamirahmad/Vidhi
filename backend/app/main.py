@@ -9,7 +9,6 @@ import re
 import time
 import uuid
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -19,6 +18,9 @@ from urllib.parse import urlparse
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from backend.app.error_handlers import HttpError, install_exception_handlers
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from backend.app.logging_config import configure_logging, get_logger, log_event
@@ -127,22 +129,6 @@ def get_client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
-
-
-@dataclass
-class HttpError(Exception):
-    status: int
-    code: str
-    message: str
-    user_message: str
-
-
-def http_error_payload(err: HttpError) -> Dict[str, Any]:
-    return {
-        "error": err.message,
-        "code": err.code,
-        "userMessage": err.user_message,
-    }
 
 
 def extract_first_match(pattern: str, text: str) -> str:
@@ -550,23 +536,6 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def exception_handler_middleware(request: Request, call_next):
-    try:
-        return await call_next(request)
-    except HttpError as exc:
-        return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
-    except Exception as exc:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": str(exc),
-                "code": "INTERNAL_ERROR",
-                "userMessage": "Something went wrong on the server. Please retry.",
-            },
-        )
-
-
-@app.middleware("http")
 async def rate_limiter_middleware(request: Request, call_next):
     if not RATE_LIMIT_ENABLED or request.url.path in RATE_LIMIT_BYPASS_PATHS:
         return await call_next(request)
@@ -631,6 +600,9 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers.setdefault("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'self'")
     return response
 
+
+app.state.request_logger = REQUEST_LOGGER
+install_exception_handlers(app)
 
 @app.exception_handler(HttpError)
 async def http_error_handler(_: Request, exc: HttpError) -> JSONResponse:
