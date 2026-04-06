@@ -29,11 +29,46 @@ class HealthMiddlewareResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    appVersion: str
     provider: str
     model: str
     apiKeyConfigured: bool
     knowledge: HealthKnowledgeResponse
     middleware: HealthMiddlewareResponse
+
+
+class MetricsStatusBucketsResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class MetricsRouteStatResponse(BaseModel):
+    requests: int
+    avgDurationMs: float
+
+
+class MetricsResponse(BaseModel):
+    status: str
+    appVersion: str
+    processStartTime: str
+    uptimeSeconds: int
+    totalRequests: int
+    totalErrors: int
+    statusBuckets: MetricsStatusBucketsResponse
+    routes: Dict[str, MetricsRouteStatResponse] = Field(default_factory=dict)
+
+
+class PromptVersionResponse(BaseModel):
+    manifestVersion: str
+    systemPromptStackVersion: str
+    taskPromptVersions: Dict[str, str] = Field(default_factory=dict)
+
+
+class QueueStatsResponse(BaseModel):
+    timestamp: str
+    submitted: int
+    active: int
+    completed: int
+    failed: int
 
 
 class KnowledgeSearchItemResponse(BaseModel):
@@ -153,5 +188,3 @@ class GenericDictResponse(BaseModel):
 
 class GenericListItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
-
-
