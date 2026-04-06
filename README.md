@@ -1,144 +1,103 @@
-# Vidhi Monorepo
+# Vidhi — Legal Research & Document Automation Platform
 
-Vidhi is an AI-assisted legal workflow platform with:
-- a **FastAPI backend** for agent orchestration, knowledge retrieval, and guarded generation,
-- a **TypeScript frontend** for user interaction,
-- and **shared contracts** for typed interoperability.
+Vidhi is an assistive legal research and document automation platform tailored for the Indian legal ecosystem. It combines retrieval-augmented generation (RAG), structured prompting, and human-in-the-loop validation to support legal professionals in research and drafting workflows.
 
-## Architecture at a glance
+> ⚠️ Vidhi is **not a source of legal advice**. All outputs must be reviewed by a qualified professional.
 
-```mermaid
-flowchart TD
-    UI[Frontend - Vite/React] --> API[FastAPI API Layer]
-    API --> AGENTS[Prompt Service / Agent Endpoints]
-    API --> KB[Knowledge Service]
-    KB --> STORE[(Vector/Document Store)]
-    AGENTS --> LLM[LLM Provider]
-    API --> OBS[Health + Logging + Feedback]
+---
+
+## 🚀 Key Features
+
+- 🔍 Legal research powered by RAG (LangChain + vector store)
+- 🧠 Structured prompt orchestration for consistent outputs
+- 📄 Document drafting assistance
+- 📚 Knowledge base ingestion from public legal sources
+- ⚡ FastAPI backend with modular services
+- 💻 Modern React frontend (Vite-based)
+- 🧩 Shared contract schemas for type safety
+
+---
+
+## 🏗️ Monorepo Structure
+
 ```
-
-## Repository structure
-
-```text
-.
+Vidhi/
 ├── backend/
-│   ├── app/
-│   │   ├── knowledge/          # ingestion, embeddings, retrieval
-│   │   ├── prompts/            # core and module prompts + builder
-│   │   ├── services/           # orchestration services
-│   │   ├── main.py             # FastAPI app + routes
-│   │   ├── request_models.py   # validated request DTOs
-│   │   └── response_models.py  # response contracts
-│   ├── data/knowledge/         # local seed knowledge
-│   ├── requirements.txt
-│   └── smoke_test.py
-├── docs/architecture/          # architecture and deployment docs
-├── frontend/                   # Vite + React app
-├── packages/contracts/         # shared TypeScript contracts
+├── frontend/
+├── packages/
+├── docs/
+├── scripts/
 ├── tests/
-│   ├── integration/
-│   └── unit/
-├── scripts/                    # local backend helper scripts (PowerShell)
-└── .github/workflows/ci.yml
+├── deploy/
+└── .env.example
 ```
 
-## Quick start
+---
 
-### 1) Prerequisites
-- Python 3.10+
-- Node.js 20+
-- npm 10+
+## 🧠 Architecture Overview
 
-### 2) Clone and configure
+Vidhi consists of three main layers:
 
-```bash
-git clone <repo-url>
-cd Vidhi
-cp .env.example .env
+### 1. Frontend
+- Built with **React + Vite**
+
+### 2. Backend (FastAPI)
+- API gateway and orchestration layer
+
+### 3. Knowledge Layer (RAG)
+- LangChain-based pipeline
+- Chroma vector store
+
+---
+
+## 📦 Setup Instructions
+
+### Backend
+
+```
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
-### 3) Install dependencies
+### Frontend
 
-Backend:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -r backend/requirements.txt
 ```
-
-Frontend + workspace packages:
-
-```bash
+cd frontend
 npm install
-```
-
-### 4) Run services
-
-Backend API:
-
-```bash
-uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Frontend:
-
-```bash
 npm run dev
 ```
 
-## API usage examples
+---
 
-### Health check
+## 🧪 Testing
 
-```bash
-curl http://localhost:8000/api/v1/health
+```
+pytest
 ```
 
-### Issue Spotter agent
+---
 
-```bash
-curl -X POST http://localhost:8000/api/v1/agents/issue-spotter \
-  -H "Content-Type: application/json" \
-  -d @backend/sample-issue-input.json
+## 🚢 Deployment
+
+```
+./deploy.sh
 ```
 
-### Knowledge search
+---
 
-```bash
-curl "http://localhost:8000/api/v1/knowledge-base/search?q=bail&k=5"
-```
+## 🛠️ Tech Stack
 
-## Testing
+- React + Vite
+- FastAPI
+- LangChain
+- Chroma
+- Python, TypeScript
 
-Run Python tests:
+---
 
-```bash
-python -m pytest -q
-```
+## ⚠️ Disclaimer
 
-## Documentation
-
-- System architecture: `docs/architecture/system_architecture.md`
-- Sequence flow: `docs/architecture/sequence_diagram.md`
-- Multi-agent architecture: `docs/architecture/multi_agent_architecture.md`
-- Deployment references:
-  - `docs/architecture/Docker_Infrastructure_architecture.md`
-  - `docs/architecture/OnPrem_Deployment_diagram.md`
-- API reference: `docs/api.md`
-- Prompt strategy: `docs/prompt-strategy.md`
-- Versioning strategy: `docs/versioning.md`
-- Configuration management: `docs/configuration.md`
-
-## CI
-
-GitHub Actions CI lives at `.github/workflows/ci.yml` and is intended to run lint, tests, and builds on pull requests.
-
-## Community and governance
-
-- Contribution guide: `CONTRIBUTING.md`
-- Code of Conduct: `CODE_OF_CONDUCT.md`
-
-## License
-
-MIT — see `LICENSE`.
+Vidhi is an assistive tool and does not replace professional legal advice.
