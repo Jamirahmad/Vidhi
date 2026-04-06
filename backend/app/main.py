@@ -9,7 +9,6 @@ import re
 import time
 import uuid
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from threading import Lock
@@ -21,6 +20,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from backend.app.config import load_app_config
+from backend.app.error_handlers import HttpError, install_exception_handlers
+from backend.app.guardrails import apply_output_guardrails
+from backend.app.logging_config import configure_logging, get_logger, log_event
+from backend.app.prompts.registry import get_prompt_manifest_version, get_task_prompt_versions
+from backend.app.queue import InMemoryTaskQueue
+from backend.app.reliability import build_fallback_task_prompt, compute_backoff_seconds, is_retryable_status, should_retry_with_fallback
 from backend.app.request_models import (
     FeedbackSubmitRequest,
     GenericAgentRequest,
@@ -28,6 +34,7 @@ from backend.app.request_models import (
     LiveSearchRequest,
     ProvisionLookupRequest,
 )
+from backend.app.routes.system_routes import build_system_router
 from backend.app.response_models import (
     FeedbackListResponse,
     FeedbackSubmitResponse,
@@ -37,10 +44,14 @@ from backend.app.response_models import (
     KnowledgeSearchItemResponse,
     LiveSearchDrilldownResponse,
     LiveSearchResponse,
+    MetricsResponse,
+    PromptVersionResponse,
+    QueueStatsResponse,
     ProvisionLookupResponse,
     RefreshResponse,
 )
 from backend.app.services.prompt_service import resolve_system_prompt, resolve_task_prompt
+from backend.app.versioning import resolve_app_version
 
 try:
     from backend.app.knowledge import KnowledgeService
@@ -58,29 +69,30 @@ for parent in [ROOT_DIR, *ROOT_DIR.parents]:
         load_dotenv(env_file)
         break
 
-PORT = int(os.getenv("PORT", "8000"))
-MODEL = os.getenv("VIDHI_LLM_MODEL") or os.getenv("VIDHI_OPENAI_MODEL") or "openai/gpt-4.1-mini"
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "http://localhost:5173")
-OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "Vidhi")
-OPENROUTER_CHAT_URL = os.getenv("OPENROUTER_CHAT_URL", "https://openrouter.ai/api/v1/chat/completions")
-OPENROUTER_MAX_TOKENS = int(os.getenv("OPENROUTER_MAX_TOKENS", "1800"))
+APP_CONFIG = load_app_config(ROOT_DIR)
+PORT = APP_CONFIG.port
+MODEL = APP_CONFIG.model
+OPENROUTER_API_KEY = APP_CONFIG.openrouter_api_key
+OPENROUTER_SITE_URL = APP_CONFIG.openrouter_site_url
+OPENROUTER_APP_NAME = APP_CONFIG.openrouter_app_name
+OPENROUTER_CHAT_URL = APP_CONFIG.openrouter_chat_url
+OPENROUTER_MAX_TOKENS = APP_CONFIG.openrouter_max_tokens
+LLM_MAX_RETRIES = APP_CONFIG.llm_max_retries
+LLM_RETRY_BACKOFF_MS = APP_CONFIG.llm_retry_backoff_ms
+LLM_FALLBACK_ENABLED = APP_CONFIG.llm_fallback_enabled
 
 REQUEST_LOGGER_NAME = "vidhi.request"
-RATE_LIMIT_ENABLED = os.getenv("VIDHI_RATE_LIMIT_ENABLED", "true").strip().lower() in {"1", "true", "yes"}
-RATE_LIMIT_WINDOW_S = max(1, int(os.getenv("VIDHI_RATE_LIMIT_WINDOW_S", "60")))
-RATE_LIMIT_MAX_REQUESTS = max(1, int(os.getenv("VIDHI_RATE_LIMIT_MAX_REQUESTS", "120")))
-RATE_LIMIT_BYPASS_PATHS = {
-    path.strip()
-    for path in os.getenv("VIDHI_RATE_LIMIT_BYPASS_PATHS", "/api/v1/health").split(",")
-    if path.strip()
-}
-RESPONSE_CACHE_TTL_S = max(1, int(os.getenv("VIDHI_RESPONSE_CACHE_TTL_S", "300")))
-RESPONSE_CACHE_MAX_ENTRIES = max(32, int(os.getenv("VIDHI_RESPONSE_CACHE_MAX_ENTRIES", "256")))
-RESPONSE_STALE_TTL_S = max(1, int(os.getenv("VIDHI_RESPONSE_STALE_TTL_S", "900")))
-PREWARM_QUERIES = [q.strip() for q in os.getenv("VIDHI_PREWARM_QUERIES", "bail,anticipatory bail,section 420,cheque bounce").split(",") if q.strip()]
-PREWARM_ENABLED = os.getenv("VIDHI_PREWARM_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
-PREWARM_PROVISION_ENABLED = os.getenv("VIDHI_PREWARM_PROVISION_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
+APP_VERSION = resolve_app_version(ROOT_DIR)
+RATE_LIMIT_ENABLED = APP_CONFIG.rate_limit_enabled
+RATE_LIMIT_WINDOW_S = APP_CONFIG.rate_limit_window_s
+RATE_LIMIT_MAX_REQUESTS = APP_CONFIG.rate_limit_max_requests
+RATE_LIMIT_BYPASS_PATHS = APP_CONFIG.rate_limit_bypass_paths
+RESPONSE_CACHE_TTL_S = APP_CONFIG.response_cache_ttl_s
+RESPONSE_CACHE_MAX_ENTRIES = APP_CONFIG.response_cache_max_entries
+RESPONSE_STALE_TTL_S = APP_CONFIG.response_stale_ttl_s
+PREWARM_QUERIES = APP_CONFIG.prewarm_queries
+PREWARM_ENABLED = APP_CONFIG.prewarm_enabled
+PREWARM_PROVISION_ENABLED = APP_CONFIG.prewarm_provision_enabled
 
 KNOWLEDGE_SERVICE = None
 KNOWLEDGE_INIT_ERROR: Optional[str] = None
@@ -93,9 +105,8 @@ else:
     KNOWLEDGE_INIT_ERROR = KNOWLEDGE_IMPORT_ERROR
 
 
-REQUEST_LOGGER = logging.getLogger(REQUEST_LOGGER_NAME)
-if not REQUEST_LOGGER.handlers:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+configure_logging()
+REQUEST_LOGGER = get_logger(REQUEST_LOGGER_NAME)
 
 RATE_LIMIT_STORE: Dict[str, deque[float]] = defaultdict(deque)
 RATE_LIMIT_LOCK = Lock()
@@ -110,7 +121,19 @@ PROVISION_ANALYSIS_TASKS: set[str] = set()
 PROVISION_ANALYSIS_LOCK = Lock()
 PROVISION_URL_CACHE: Dict[str, str] = {}
 PROVISION_URL_CACHE_LOCK = Lock()
-PROVISION_URL_WARM_LIMIT = max(1, int(os.getenv("VIDHI_PROVISION_URL_WARM_LIMIT", "4")))
+PROVISION_URL_WARM_LIMIT = APP_CONFIG.provision_url_warm_limit
+BACKGROUND_TASK_QUEUE = InMemoryTaskQueue()
+PROCESS_START_TS = time.time()
+METRICS_LOCK = Lock()
+METRICS_TOTAL_REQUESTS = 0
+METRICS_TOTAL_ERRORS = 0
+METRICS_STATUS_BUCKETS: Dict[str, int] = {
+    "2xx": 0,
+    "3xx": 0,
+    "4xx": 0,
+    "5xx": 0,
+}
+METRICS_ROUTE_STATS: Dict[str, Dict[str, float]] = defaultdict(lambda: {"requests": 0.0, "total_duration_ms": 0.0})
 
 
 def get_client_ip(request: Request) -> str:
@@ -127,22 +150,6 @@ def get_client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
-
-
-@dataclass
-class HttpError(Exception):
-    status: int
-    code: str
-    message: str
-    user_message: str
-
-
-def http_error_payload(err: HttpError) -> Dict[str, Any]:
-    return {
-        "error": err.message,
-        "code": err.code,
-        "userMessage": err.user_message,
-    }
 
 
 def extract_first_match(pattern: str, text: str) -> str:
@@ -244,7 +251,7 @@ def _schedule_cache_refresh(task_key: str, builder: Callable[[], Awaitable[Any]]
             with CACHE_REFRESH_LOCK:
                 CACHE_REFRESH_TASKS.discard(task_key)
 
-    asyncio.create_task(_runner())
+    BACKGROUND_TASK_QUEUE.submit(f"cache-refresh:{task_key}", _runner)
 
 
 
@@ -492,25 +499,6 @@ async def llm_json(task: str, payload: Dict[str, Any] | Any) -> Dict[str, Any]:
     if not isinstance(normalized_payload, dict):
         normalized_payload = {"value": normalized_payload}
 
-    request_payload = {
-        "model": MODEL,
-        "temperature": 0.2,
-        "max_tokens": OPENROUTER_MAX_TOKENS,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {
-                        "task": task_prompt,
-                        "payload": normalized_payload,
-                    }
-                ),
-            },
-        ],
-    }
-
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -518,27 +506,80 @@ async def llm_json(task: str, payload: Dict[str, Any] | Any) -> Dict[str, Any]:
         "X-Title": OPENROUTER_APP_NAME,
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(OPENROUTER_CHAT_URL, headers=headers, json=request_payload)
+    async def _call_provider(prompt_text: str) -> Dict[str, Any]:
+        request_payload = {
+            "model": MODEL,
+            "temperature": 0.2,
+            "max_tokens": OPENROUTER_MAX_TOKENS,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "task": prompt_text,
+                            "payload": normalized_payload,
+                        }
+                    ),
+                },
+            ],
+        }
 
-    if response.status_code >= 300:
-        raise normalize_provider_error(response.status_code, response.text)
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            for attempt_index in range(LLM_MAX_RETRIES + 1):
+                try:
+                    response = await client.post(OPENROUTER_CHAT_URL, headers=headers, json=request_payload)
+                except httpx.HTTPError as exc:
+                    if attempt_index < LLM_MAX_RETRIES:
+                        await asyncio.sleep(compute_backoff_seconds(attempt_index, LLM_RETRY_BACKOFF_MS))
+                        continue
+                    raise HttpError(
+                        status=502,
+                        code="LLM_PROVIDER_UNREACHABLE",
+                        message=f"Failed to connect to provider: {exc}",
+                        user_message="AI provider is temporarily unavailable. Please retry.",
+                    )
 
-    data = response.json()
-    content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "{}")
+                if response.status_code >= 300:
+                    if attempt_index < LLM_MAX_RETRIES and is_retryable_status(response.status_code):
+                        await asyncio.sleep(compute_backoff_seconds(attempt_index, LLM_RETRY_BACKOFF_MS))
+                        continue
+                    raise normalize_provider_error(response.status_code, response.text)
+                return response.json()
 
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
         raise HttpError(
             status=502,
-            code="INVALID_PROVIDER_RESPONSE",
-            message="LLM returned non-JSON content",
-            user_message="AI response format was invalid. Please retry.",
+            code="LLM_PROVIDER_RETRY_EXHAUSTED",
+            message="Provider retries were exhausted without a successful response",
+            user_message="AI provider is temporarily unavailable. Please retry.",
         )
 
+    async def _parse_and_guard(data: Dict[str, Any], task_name: str) -> Dict[str, Any]:
+        content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "{}")
+        try:
+            parsed_content = json.loads(content)
+        except json.JSONDecodeError:
+            raise HttpError(
+                status=502,
+                code="INVALID_PROVIDER_RESPONSE",
+                message="LLM returned non-JSON content",
+                user_message="AI response format was invalid. Please retry.",
+            )
+        return apply_output_guardrails(task=task_name, payload=parsed_content)
 
-app = FastAPI(title="Vidhi Python Backend", version="1.0.0")
+    try:
+        primary_data = await _call_provider(task_prompt)
+        return await _parse_and_guard(primary_data, task)
+    except HttpError as exc:
+        if not LLM_FALLBACK_ENABLED or not should_retry_with_fallback(exc.code):
+            raise
+        fallback_prompt = build_fallback_task_prompt(task_prompt)
+        fallback_data = await _call_provider(fallback_prompt)
+        return await _parse_and_guard(fallback_data, task)
+
+
+app = FastAPI(title="Vidhi Python Backend", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -547,23 +588,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.middleware("http")
-async def exception_handler_middleware(request: Request, call_next):
-    try:
-        return await call_next(request)
-    except HttpError as exc:
-        return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
-    except Exception as exc:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": str(exc),
-                "code": "INTERNAL_ERROR",
-                "userMessage": "Something went wrong on the server. Please retry.",
-            },
-        )
 
 
 @app.middleware("http")
@@ -606,15 +630,30 @@ async def request_logger_middleware(request: Request, call_next):
 
     response.headers.setdefault("X-Request-Id", request_id)
     response.headers.setdefault("X-Backend-Latency-Ms", f"{duration_ms:.2f}")
-    REQUEST_LOGGER.info(
-        "request_id=%s method=%s path=%s status=%s duration_ms=%.2f ip=%s",
-        request_id,
-        request.method,
-        request.url.path,
-        response.status_code,
-        duration_ms,
-        get_client_ip(request),
+    log_event(
+        REQUEST_LOGGER,
+        logging.INFO,
+        "http_request",
+        request_id=request_id,
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=round(duration_ms, 2),
+        client_ip=get_client_ip(request),
     )
+
+    status_bucket = f"{response.status_code // 100}xx"
+    with METRICS_LOCK:
+        global METRICS_TOTAL_REQUESTS
+        global METRICS_TOTAL_ERRORS
+        METRICS_TOTAL_REQUESTS += 1
+        if response.status_code >= 400:
+            METRICS_TOTAL_ERRORS += 1
+        METRICS_STATUS_BUCKETS[status_bucket] = METRICS_STATUS_BUCKETS.get(status_bucket, 0) + 1
+        route_metric = METRICS_ROUTE_STATS[request.url.path]
+        route_metric["requests"] += 1.0
+        route_metric["total_duration_ms"] += float(duration_ms)
+
     return response
 
 
@@ -630,23 +669,8 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
-@app.exception_handler(HttpError)
-async def http_error_handler(_: Request, exc: HttpError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status, content=http_error_payload(exc))
-
-
-@app.exception_handler(Exception)
-async def generic_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": str(exc),
-            "code": "INTERNAL_ERROR",
-            "userMessage": "Something went wrong on the server. Please retry.",
-        },
-    )
-
-
+app.state.request_logger = REQUEST_LOGGER
+install_exception_handlers(app)
 
 @app.on_event("startup")
 async def prewarm_popular_queries() -> None:
@@ -688,11 +712,11 @@ async def prewarm_popular_queries() -> None:
 _FEEDBACK_STORE: List[Dict[str, Any]] = []
 
 
-@app.get("/api/v1/health")
-async def health() -> HealthResponse:
+async def _health_handler() -> HealthResponse:
     return {
         "status": "ok",
         "provider": "openrouter",
+        "appVersion": APP_VERSION,
         "model": MODEL,
         "apiKeyConfigured": bool(OPENROUTER_API_KEY),
         "knowledge": {
@@ -716,8 +740,48 @@ async def health() -> HealthResponse:
     }
 
 
-@app.post("/api/v1/feedback", response_model=FeedbackSubmitResponse)
-async def feedback_submit(payload: FeedbackSubmitRequest) -> FeedbackSubmitResponse:
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
+@app.get("/api/v1/prompts/versions", response_model=PromptVersionResponse)
+async def prompt_versions() -> PromptVersionResponse:
+    return {
+        "manifestVersion": get_prompt_manifest_version(),
+        "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+        "taskPromptVersions": get_task_prompt_versions(),
+    }
+
+
+@app.get("/api/v1/queue/stats", response_model=QueueStatsResponse)
+async def queue_stats() -> QueueStatsResponse:
+    return BACKGROUND_TASK_QUEUE.snapshot()
+
+
+async def _feedback_submit_handler(payload_dict: Dict[str, Any]) -> FeedbackSubmitResponse:
+    payload = FeedbackSubmitRequest.model_validate(payload_dict)
     normalized_payload = payload.model_dump(mode="python")
     item = {
         "id": str(uuid.uuid4()),
@@ -728,10 +792,18 @@ async def feedback_submit(payload: FeedbackSubmitRequest) -> FeedbackSubmitRespo
     return {"status": "received", "feedbackId": item["id"]}
 
 
-@app.get("/api/v1/feedback", response_model=FeedbackListResponse)
-async def feedback_list(limit: int = Query(50, ge=1, le=200)) -> FeedbackListResponse:
+async def _feedback_list_handler(limit: int) -> FeedbackListResponse:
     items = _FEEDBACK_STORE[-limit:]
     return {"count": len(items), "items": items}
+
+
+app.include_router(
+    build_system_router(
+        health_handler=_health_handler,
+        feedback_submit_handler=_feedback_submit_handler,
+        feedback_list_handler=_feedback_list_handler,
+    )
+)
 
 
 @app.get("/api/v1/knowledge-base/search")
@@ -1182,7 +1254,10 @@ async def _build_provision_lookup_response(query: str, facts: str, limit: int, s
         )
 
     if warm_candidates:
-        asyncio.create_task(_warm_precise_provision_url_cache(warm_candidates))
+        BACKGROUND_TASK_QUEUE.submit(
+            "provision-url-warm",
+            lambda: _warm_precise_provision_url_cache(warm_candidates),
+        )
 
     _cache_retrieved_provisions_to_rag(query=query, facts=facts, provisions=provisions)
 
@@ -1243,7 +1318,10 @@ async def _build_provision_lookup_response(query: str, facts: str, limit: int, s
             analysis_status = "disabled"
         else:
             PROVISION_ANALYSIS_TASKS.add(job_id)
-            asyncio.create_task(_run_provision_analysis_job(job_id, query, facts, provisions))
+            BACKGROUND_TASK_QUEUE.submit(
+                f"provision-analysis:{job_id}",
+                lambda: _run_provision_analysis_job(job_id, query, facts, provisions),
+            )
 
     if isinstance(analysis, dict):
         cited = analysis.get("citedSourceIds", [])
@@ -1366,16 +1444,6 @@ async def judgment_summarizer(file: UploadFile = File(...)) -> GenericDictRespon
     summary = out.get("summary", {}) if isinstance(out.get("summary", {}), dict) else {}
     summary["sourceFileName"] = file.filename or "judgment"
     return summary
-
-
-
-
-
-
-
-
-
-
 
 
 
