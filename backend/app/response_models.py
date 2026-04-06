@@ -169,3 +169,5 @@ class GenericDictResponse(BaseModel):
 
 class GenericListItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+    model_config = ConfigDict(extra="allow")

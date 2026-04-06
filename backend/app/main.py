@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from backend.app.config import load_app_config
 from backend.app.error_handlers import HttpError, install_exception_handlers
 from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.request_models import (
@@ -39,6 +40,7 @@ from backend.app.response_models import (
     KnowledgeSearchItemResponse,
     LiveSearchDrilldownResponse,
     LiveSearchResponse,
+    MetricsResponse,
     ProvisionLookupResponse,
     RefreshResponse,
 )
@@ -61,6 +63,27 @@ for parent in [ROOT_DIR, *ROOT_DIR.parents]:
         load_dotenv(env_file)
         break
 
+APP_CONFIG = load_app_config(ROOT_DIR)
+PORT = APP_CONFIG.port
+MODEL = APP_CONFIG.model
+OPENROUTER_API_KEY = APP_CONFIG.openrouter_api_key
+OPENROUTER_SITE_URL = APP_CONFIG.openrouter_site_url
+OPENROUTER_APP_NAME = APP_CONFIG.openrouter_app_name
+OPENROUTER_CHAT_URL = APP_CONFIG.openrouter_chat_url
+OPENROUTER_MAX_TOKENS = APP_CONFIG.openrouter_max_tokens
+
+REQUEST_LOGGER_NAME = "vidhi.request"
+APP_VERSION = resolve_app_version(ROOT_DIR)
+RATE_LIMIT_ENABLED = APP_CONFIG.rate_limit_enabled
+RATE_LIMIT_WINDOW_S = APP_CONFIG.rate_limit_window_s
+RATE_LIMIT_MAX_REQUESTS = APP_CONFIG.rate_limit_max_requests
+RATE_LIMIT_BYPASS_PATHS = APP_CONFIG.rate_limit_bypass_paths
+RESPONSE_CACHE_TTL_S = APP_CONFIG.response_cache_ttl_s
+RESPONSE_CACHE_MAX_ENTRIES = APP_CONFIG.response_cache_max_entries
+RESPONSE_STALE_TTL_S = APP_CONFIG.response_stale_ttl_s
+PREWARM_QUERIES = APP_CONFIG.prewarm_queries
+PREWARM_ENABLED = APP_CONFIG.prewarm_enabled
+PREWARM_PROVISION_ENABLED = APP_CONFIG.prewarm_provision_enabled
 PORT = int(os.getenv("PORT", "8000"))
 MODEL = os.getenv("VIDHI_LLM_MODEL") or os.getenv("VIDHI_OPENAI_MODEL") or "openai/gpt-4.1-mini"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -113,6 +136,18 @@ PROVISION_ANALYSIS_TASKS: set[str] = set()
 PROVISION_ANALYSIS_LOCK = Lock()
 PROVISION_URL_CACHE: Dict[str, str] = {}
 PROVISION_URL_CACHE_LOCK = Lock()
+PROVISION_URL_WARM_LIMIT = APP_CONFIG.provision_url_warm_limit
+PROCESS_START_TS = time.time()
+METRICS_LOCK = Lock()
+METRICS_TOTAL_REQUESTS = 0
+METRICS_TOTAL_ERRORS = 0
+METRICS_STATUS_BUCKETS: Dict[str, int] = {
+    "2xx": 0,
+    "3xx": 0,
+    "4xx": 0,
+    "5xx": 0,
+}
+METRICS_ROUTE_STATS: Dict[str, Dict[str, float]] = defaultdict(lambda: {"requests": 0.0, "total_duration_ms": 0.0})
 PROVISION_URL_WARM_LIMIT = max(1, int(os.getenv("VIDHI_PROVISION_URL_WARM_LIMIT", "4")))
 
 
@@ -587,6 +622,19 @@ async def request_logger_middleware(request: Request, call_next):
         duration_ms=round(duration_ms, 2),
         client_ip=get_client_ip(request),
     )
+
+    status_bucket = f"{response.status_code // 100}xx"
+    with METRICS_LOCK:
+        global METRICS_TOTAL_REQUESTS
+        global METRICS_TOTAL_ERRORS
+        METRICS_TOTAL_REQUESTS += 1
+        if response.status_code >= 400:
+            METRICS_TOTAL_ERRORS += 1
+        METRICS_STATUS_BUCKETS[status_bucket] = METRICS_STATUS_BUCKETS.get(status_bucket, 0) + 1
+        route_metric = METRICS_ROUTE_STATS[request.url.path]
+        route_metric["requests"] += 1.0
+        route_metric["total_duration_ms"] += float(duration_ms)
+
     return response
 
 
@@ -670,6 +718,31 @@ async def _health_handler() -> HealthResponse:
                 "bypassPaths": sorted(list(RATE_LIMIT_BYPASS_PATHS)),
             },
         },
+    }
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
     }
 
 
@@ -1331,44 +1404,6 @@ async def judgment_summarizer(file: UploadFile = File(...)) -> GenericDictRespon
     summary = out.get("summary", {}) if isinstance(out.get("summary", {}), dict) else {}
     summary["sourceFileName"] = file.filename or "judgment"
     return summary
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 from __future__ import annotations
 

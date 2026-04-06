@@ -128,6 +128,7 @@ python -m pytest -q
 - API reference: `docs/api.md`
 - Prompt strategy: `docs/prompt-strategy.md`
 - Versioning strategy: `docs/versioning.md`
+- Configuration management: `docs/configuration.md`
 
 ## CI
 
