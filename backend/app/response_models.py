@@ -40,11 +40,9 @@ class HealthResponse(BaseModel):
 class MetricsStatusBucketsResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-
 class MetricsRouteStatResponse(BaseModel):
     requests: int
     avgDurationMs: float
-
 
 class MetricsResponse(BaseModel):
     status: str
@@ -55,7 +53,6 @@ class MetricsResponse(BaseModel):
     totalErrors: int
     statusBuckets: MetricsStatusBucketsResponse
     routes: Dict[str, MetricsRouteStatResponse] = Field(default_factory=dict)
-
 
 class PromptVersionResponse(BaseModel):
     manifestVersion: str
@@ -75,9 +72,38 @@ class KnowledgeSearchItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class RefreshResponse(BaseModel):
+class MetricsRouteStatResponse(BaseModel):
+    requests: int
+    avgDurationMs: float
+
+
+class MetricsResponse(BaseModel):
+    status: str
+    appVersion: str
+    processStartTime: str
+    uptimeSeconds: int
+    totalRequests: int
+    totalErrors: int
+    statusBuckets: MetricsStatusBucketsResponse
+    routes: Dict[str, MetricsRouteStatResponse] = Field(default_factory=dict)
+
+class PromptVersionResponse(BaseModel):
+    manifestVersion: str
+    systemPromptStackVersion: str
+    taskPromptVersions: Dict[str, str] = Field(default_factory=dict)
+
+class QueueStatsResponse(BaseModel):
+    timestamp: str
+    submitted: int
+    active: int
+    completed: int
+    failed: int
+
+class KnowledgeSearchItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+class RefreshResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
 
 class LiveSearchResultItemResponse(BaseModel):
     id: str
@@ -165,26 +191,22 @@ class ProvisionLookupResponse(BaseModel):
     grounding: Optional[Dict[str, Any]] = None
     retrievalDiagnostics: Optional[ProvisionRetrievalDiagnosticsResponse] = None
 
-
 class FeedbackItemResponse(BaseModel):
     id: str
     createdAt: str
     payload: Dict[str, Any]
 
-
 class FeedbackSubmitResponse(BaseModel):
     status: str
     feedbackId: str
-
 
 class FeedbackListResponse(BaseModel):
     count: int
     items: List[FeedbackItemResponse] = Field(default_factory=list)
 
-
 class GenericDictResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-
 class GenericListItemResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
     model_config = ConfigDict(extra="allow")
