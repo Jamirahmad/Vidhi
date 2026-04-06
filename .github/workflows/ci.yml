@@ -46,6 +46,10 @@ jobs:
       - name: Secrets scan
         run: npm run secrets:scan
 
+      - name: Version consistency check
+        run: npm run version:check
+
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -71,6 +75,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
+
 
       - name: Run backend tests
         run: python -m pytest -q

@@ -29,6 +29,7 @@ class HealthMiddlewareResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+    appVersion: str
     provider: str
     model: str
     apiKeyConfigured: bool

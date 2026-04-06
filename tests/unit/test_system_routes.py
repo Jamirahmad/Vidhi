@@ -7,6 +7,7 @@ from backend.app.routes.system_routes import build_system_router
 async def _health():
     return {
         "status": "ok",
+        "appVersion": "0.1.0",
         "provider": "openrouter",
         "model": "model",
         "apiKeyConfigured": True,

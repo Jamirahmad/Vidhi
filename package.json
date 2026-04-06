@@ -29,6 +29,9 @@
         "format": "npx prettier --write \"**/*.{md,json,yml,yaml,ts,tsx,js,jsx,css,html}\"",
         "format:check": "npx prettier --check \"**/*.{md,json,yml,yaml,ts,tsx,js,jsx,css,html}\"",
         "secrets:scan": "python scripts/check-no-secrets.py",
+        "export:clean": "bash scripts/export-clean-repo.sh",
+        "version:check": "python scripts/validate-versioning.py",
+        "release:tag": "bash scripts/create-release-tag.sh"
         "export:clean": "bash scripts/export-clean-repo.sh"
         "secrets:scan": "python scripts/check-no-secrets.py"
         "format:check": "npx prettier --check \"**/*.{md,json,yml,yaml,ts,tsx,js,jsx,css,html}\""
