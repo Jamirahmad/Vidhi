@@ -31,6 +31,7 @@ Starter template: `backend/config/runtime.example.json`.
 - LLM reliability settings (`llm_max_retries`, `llm_retry_backoff_ms`, `llm_fallback_enabled`)
 - rate limiting controls (`rate_limit_*`)
 - cache settings (`response_cache_*`)
+- embedding cache settings (`VIDHI_EMBED_CACHE_MAX_ENTRIES`)
 - prewarm settings (`prewarm_*`)
 - `provision_url_warm_limit`
 

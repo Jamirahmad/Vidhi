@@ -61,14 +61,18 @@ class PromptVersionResponse(BaseModel):
     systemPromptStackVersion: str
     taskPromptVersions: Dict[str, str] = Field(default_factory=dict)
 
+class QueueStatsResponse(BaseModel):
+    timestamp: str
+    submitted: int
+    active: int
+    completed: int
+    failed: int
 
 class KnowledgeSearchItemResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-
 class RefreshResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
-
 
 class LiveSearchResultItemResponse(BaseModel):
     id: str

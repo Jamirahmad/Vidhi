@@ -69,6 +69,8 @@ sequenceDiagram
 - **Health checks:** `/api/v1/health` for service status and dependencies.
 - **Rate limiting:** request window and per-client caps configurable with environment variables.
 - **Response caching:** in-memory TTL + stale cache support for repeated requests.
+- **Embedding caching:** in-memory LRU cache for deterministic embedding reuse.
+- **Async queue abstraction:** in-memory queue layer for background jobs exposed via `/api/v1/queue/stats`.
 - **Feedback loop:** feedback endpoints support operational monitoring and iterative improvement.
 
 ## 6) Deployment note

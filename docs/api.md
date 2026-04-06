@@ -96,6 +96,20 @@ Returns prompt manifest and module version mapping used by runtime prompt resolu
 }
 ```
 
+### `GET /api/v1/queue/stats`
+Returns in-process background queue counters for async jobs (cache refresh, provision analysis, URL warmers).
+
+**Sample response**
+```json
+{
+  "timestamp": "2026-04-06T00:00:00Z",
+  "submitted": 12,
+  "active": 1,
+  "completed": 10,
+  "failed": 1
+}
+```
+
 ### `POST /api/v1/feedback`
 Stores arbitrary feedback payload.
 

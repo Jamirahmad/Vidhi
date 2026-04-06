@@ -25,6 +25,7 @@ from backend.app.error_handlers import HttpError, install_exception_handlers
 from backend.app.guardrails import apply_output_guardrails
 from backend.app.logging_config import configure_logging, get_logger, log_event
 from backend.app.prompts.registry import get_prompt_manifest_version, get_task_prompt_versions
+from backend.app.queue import InMemoryTaskQueue
 from backend.app.reliability import build_fallback_task_prompt, compute_backoff_seconds, is_retryable_status, should_retry_with_fallback
 from backend.app.request_models import (
     FeedbackSubmitRequest,
@@ -45,6 +46,7 @@ from backend.app.response_models import (
     LiveSearchResponse,
     MetricsResponse,
     PromptVersionResponse,
+    QueueStatsResponse,
     ProvisionLookupResponse,
     RefreshResponse,
 )
@@ -144,6 +146,7 @@ PROVISION_ANALYSIS_LOCK = Lock()
 PROVISION_URL_CACHE: Dict[str, str] = {}
 PROVISION_URL_CACHE_LOCK = Lock()
 PROVISION_URL_WARM_LIMIT = APP_CONFIG.provision_url_warm_limit
+BACKGROUND_TASK_QUEUE = InMemoryTaskQueue()
 PROCESS_START_TS = time.time()
 METRICS_LOCK = Lock()
 METRICS_TOTAL_REQUESTS = 0
@@ -273,6 +276,7 @@ def _schedule_cache_refresh(task_key: str, builder: Callable[[], Awaitable[Any]]
             with CACHE_REFRESH_LOCK:
                 CACHE_REFRESH_TASKS.discard(task_key)
 
+    BACKGROUND_TASK_QUEUE.submit(f"cache-refresh:{task_key}", _runner)
     asyncio.create_task(_runner())
 
 
@@ -798,6 +802,48 @@ async def _health_handler() -> HealthResponse:
                 "bypassPaths": sorted(list(RATE_LIMIT_BYPASS_PATHS)),
             },
         },
+    }
+
+@app.get("/api/v1/metrics", response_model=MetricsResponse)
+async def metrics() -> MetricsResponse:
+    with METRICS_LOCK:
+        route_stats = {
+            route: {
+                "requests": int(values["requests"]),
+                "avgDurationMs": round(values["total_duration_ms"] / values["requests"], 2) if values["requests"] else 0.0,
+            }
+            for route, values in METRICS_ROUTE_STATS.items()
+        }
+        total_requests = METRICS_TOTAL_REQUESTS
+        total_errors = METRICS_TOTAL_ERRORS
+        status_buckets = dict(METRICS_STATUS_BUCKETS)
+
+    return {
+        "status": "ok",
+        "appVersion": APP_VERSION,
+        "processStartTime": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(PROCESS_START_TS)),
+        "uptimeSeconds": max(0, int(time.time() - PROCESS_START_TS)),
+        "totalRequests": total_requests,
+        "totalErrors": total_errors,
+        "statusBuckets": status_buckets,
+        "routes": route_stats,
+    }
+
+
+@app.get("/api/v1/prompts/versions", response_model=PromptVersionResponse)
+async def prompt_versions() -> PromptVersionResponse:
+    return {
+        "manifestVersion": get_prompt_manifest_version(),
+        "systemPromptStackVersion": "system.txt+safety.txt+output_contract.txt",
+        "taskPromptVersions": get_task_prompt_versions(),
+    }
+
+
+@app.get("/api/v1/queue/stats", response_model=QueueStatsResponse)
+async def queue_stats() -> QueueStatsResponse:
+    return BACKGROUND_TASK_QUEUE.snapshot()
+
+
     }
 
 @app.get("/api/v1/metrics", response_model=MetricsResponse)
@@ -1407,6 +1453,10 @@ async def _build_provision_lookup_response(query: str, facts: str, limit: int, s
         )
 
     if warm_candidates:
+        BACKGROUND_TASK_QUEUE.submit(
+            "provision-url-warm",
+            lambda: _warm_precise_provision_url_cache(warm_candidates),
+        )
         asyncio.create_task(_warm_precise_provision_url_cache(warm_candidates))
 
     _cache_retrieved_provisions_to_rag(query=query, facts=facts, provisions=provisions)
@@ -1468,6 +1518,10 @@ async def _build_provision_lookup_response(query: str, facts: str, limit: int, s
             analysis_status = "disabled"
         else:
             PROVISION_ANALYSIS_TASKS.add(job_id)
+            BACKGROUND_TASK_QUEUE.submit(
+                f"provision-analysis:{job_id}",
+                lambda: _run_provision_analysis_job(job_id, query, facts, provisions),
+            )
             asyncio.create_task(_run_provision_analysis_job(job_id, query, facts, provisions))
 
     if isinstance(analysis, dict):
